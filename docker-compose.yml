@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # 1. MinIO (Lưu trữ file)
+  minio:
+    image: minio/minio
+    container_name: dfs-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: "admin"
+      MINIO_ROOT_PASSWORD: "password123"
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./data/minio:/data
+
+  # 2. Redis (Quản lý khóa & Đếm)
+  redis:
+    image: redis:alpine
+    container_name: dfs-redis
+    ports:
+      - "6379:6379"
+
+  # 3. RabbitMQ (Hàng đợi tin nhắn)
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: dfs-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
