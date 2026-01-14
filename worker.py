@@ -1,78 +1,62 @@
-# Worker RabbitMQ - X\u1eed l\u00fd tin nh\u1eafn t\u1eeb queue
 import pika
-import json
-import time
 import boto3
+import time
+import json
+import os
 
-# C\u1ea5u h\u00ecnh MinIO
+# --- CẤU HÌNH ---
+RABBITMQ_HOST = 'localhost'
+MINIO_ENDPOINT = 'http://localhost:9000'
+ACCESS_KEY = 'admin'
+SECRET_KEY = 'password123'
+BUCKET_NAME = 'fileshare'
+
+# 1. Kết nối MinIO (Để thực hiện lệnh xóa)
 s3 = boto3.client('s3',
-    endpoint_url='http://localhost:9000',
-    aws_access_key_id='admin',
-    aws_secret_access_key='password123',
-    config=boto3.session.Config(signature_version='s3v4')
+    endpoint_url=MINIO_ENDPOINT,
+    aws_access_key_id=ACCESS_KEY,
+    aws_secret_access_key=SECRET_KEY
 )
 
-# C\u1ea5u h\u00ecnh RabbitMQ
-RABBITMQ_HOST = 'localhost'
-RABBITMQ_QUEUE = 'file_processing'
+print(' [*] Worker đang chạy và chờ tin nhắn xóa file...')
+print(' [*] Nhấn CTRL+C để thoát')
 
-def delete_file_from_minio(bucket, filename):
-    """\u00d4a file t\u1eeb MinIO"""
-    try:
-        s3.delete_object(Bucket=bucket, Key=filename)
-        print(f"\u2705 \u0110\u00e3 x\u00f3a file: {filename}")
-        return True
-    except Exception as e:
-        print(f"\u274c L\u1ed7i x\u00f3a file: {e}")
-        return False
-
+# 2. Hàm xử lý công việc (Khi nhận được tin nhắn)
 def callback(ch, method, properties, body):
-    """X\u1eed l\u00fd tin nh\u1eafn t\u1eeb queue"""
     try:
-        message = json.loads(body)
-        print(f"\ud83d\udce8 Nh\u1eadn tin nh\u1eafn: {message}")
+        # Giải mã tin nhắn từ RabbitMQ
+        data = json.loads(body)
+        filename = data['filename']
         
-        if message['action'] == 'schedule_delete':
-            filename = message['filename']
-            bucket = message['bucket']
-            delete_after = message.get('delete_after_seconds', 3600)
-            
-            # \u0110\u1ee3i tr\u01b0\u1edbc khi x\u00f3a
-            print(f"\u23f3 Ch\u1edd {delete_after} gi\u00e2y tr\u01b0\u1edbc khi x\u00f3a {filename}...")
-            time.sleep(delete_after)
-            
-            # X\u00f3a file
-            delete_file_from_minio(bucket, filename)
-        
-        # X\u00e1c nh\u1eadn \u0111\u00e3 x\u1eed l\u00fd xong
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-        
+        print(f" [Received] Nhận yêu cầu xóa cho file: {filename}")
+
+        # --- MÔ PHỎNG TÍNH NĂNG TỰ HỦY ---
+        # Ở đây chúng ta cho Worker ngủ 10 giây để bạn kịp nhìn thấy file trên MinIO
+        # Trong thực tế, bạn có thể set là 24 giờ (86400 giây)
+        print(" ... Đang đếm ngược 10 giây trước khi hủy ...")
+        time.sleep(10) 
+
+        # --- THỰC HIỆN XÓA ---
+        s3.delete_object(Bucket=BUCKET_NAME, Key=filename)
+        print(f" [Deleted] Đã xóa vĩnh viễn file: {filename} khỏi hệ thống.")
+        print(" ----------------------------------------------------")
+
     except Exception as e:
-        print(f"\u274c L\u1ed7i x\u1eed l\u00fd: {e}")
-        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+        print(f" [Error] Có lỗi xảy ra: {e}")
 
-def start_worker():
-    """Kh\u1edfi \u0111\u1ed9ng worker \u0111\u1ec3 l\u1eafng nghe queue"""
-    credentials = pika.PlainCredentials('guest', 'guest')
-    parameters = pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        credentials=credentials
-    )
-    
-    connection = pika.BlockingConnection(parameters)
-    channel = connection.channel()
-    
-    # T\u1ea1o queue n\u1ebfu ch\u01b0a c\u00f3
-    channel.queue_declare(queue=RABBITMQ_QUEUE, durable=True)
-    
-    # C\u1ea5u h\u00ecnh l\u1ea5y 1 message m\u1ed7i l\u1ea7n
-    channel.basic_qos(prefetch_count=1)
-    
-    # \u0110\u0103ng k\u00fd callback
-    channel.basic_consume(queue=RABBITMQ_QUEUE, on_message_callback=callback)
-    
-    print('\ud83d\ude80 Worker b\u1eaft \u0111\u1ea7u l\u1eafng nghe queue...')
-    channel.start_consuming()
+# 3. Kết nối RabbitMQ và lắng nghe
+while True:
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
+        channel = connection.channel()
 
-if __name__ == '__main__':
-    start_worker()
+        # Đảm bảo hàng đợi tồn tại
+        channel.queue_declare(queue='delete_queue')
+
+        # Đăng ký hàm callback để xử lý tin nhắn
+        channel.basic_consume(queue='delete_queue', on_message_callback=callback, auto_ack=True)
+
+        channel.start_consuming()
+    except Exception as e:
+        print(f"Lỗi kết nối RabbitMQ (Đang thử lại sau 5s): {e}")
+        time.sleep(5)

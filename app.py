@@ -1,137 +1,112 @@
-# 1. Khai báo thư viện
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, redirect, render_template_string
 import boto3
-from botocore.exceptions import NoCredentialsError
-import os
+import redis
+import pika
 import time
+import json
 
 app = Flask(__name__)
 
-# 2. Cấu hình kết nối MinIO (Dùng thư viện boto3)
+# KẾT NỐI MINIO (Cái bếp bạn đã xây ở Giai đoạn 1)
 s3 = boto3.client('s3',
     endpoint_url='http://localhost:9000',
-    aws_access_key_id='admin',         # Giống trong docker-compose
-    aws_secret_access_key='password123', # Giống trong docker-compose
-    config=boto3.session.Config(signature_version='s3v4')
+    aws_access_key_id='admin',
+    aws_secret_access_key='password123'
 )
-
 BUCKET_NAME = 'fileshare'
 
-# 3. Hàm tạo Bucket nếu chưa có (Chạy 1 lần lúc bật)
-def create_bucket():
+# --- Redis (Bộ đếm) ---
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# --- RabbitMQ (Gửi tin nhắn xóa) ---
+def send_delete_message(filename):
     try:
-        s3.create_bucket(Bucket=BUCKET_NAME)
-        print(f"--- Đã tạo Bucket '{BUCKET_NAME}' ---")
-    except:
-        print(f"--- Bucket '{BUCKET_NAME}' đã tồn tại (hoặc có lỗi nhẹ) ---")
+        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        channel = connection.channel()
+        channel.queue_declare(queue='delete_queue')
+        message = json.dumps({'filename': filename})
+        channel.basic_publish(exchange='', routing_key='delete_queue', body=message)
+        connection.close()
+    except Exception as e:
+        print(f"Lỗi RabbitMQ: {e}")
 
-create_bucket()
+# Tạo cái xô đựng file (Bucket) nếu chưa có
+try:
+    s3.create_bucket(Bucket=BUCKET_NAME)
+    print("--- Đã kết nối MinIO thành công! ---")
+except:
+    print("--- MinIO đã sẵn sàng ---")
 
-# --- API 1: TRANG CHỦ với Form Upload ---
 @app.route('/')
-def index():
+def home():
     html = '''
-    <!DOCTYPE html>
+    <!doctype html>
     <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Upload File</title>
-        <style>
-            body { font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; }
-            h2 { color: #333; }
-            .upload-box { border: 2px dashed #ccc; padding: 30px; text-align: center; }
-            button { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; font-size: 16px; }
-            button:hover { background: #0056b3; }
-            #result { margin-top: 20px; padding: 15px; border-radius: 5px; }
-            .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
-            .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
-        </style>
-    </head>
-    <body>
-        <h2>🚀 Hệ thống Chia sẻ File Phân tán</h2>
-        <div class="upload-box">
-            <h3>Chọn file để upload</h3>
-            <form id="uploadForm" enctype="multipart/form-data">
-                <input type="file" id="fileInput" name="file" required>
+    <head><title>Hệ thống Chia sẻ File</title></head>
+    <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
+        <h1>📂 Hệ thống Chia sẻ File Phân tán</h1>
+        <p>File sẽ tự hủy sau 3 lần tải hoặc khi Worker dọn dẹp.</p>
+        
+        <div style="border: 2px dashed #333; padding: 40px; display: inline-block; margin-top: 20px;">
+            <form method="post" enctype="multipart/form-data" action="/upload">
+                <input type="file" name="file" required>
                 <br><br>
-                <button type="submit">📤 Upload</button>
+                <input type="submit" value="🚀 Upload lên Server" style="padding: 10px 20px; cursor: pointer;">
             </form>
         </div>
-        <div id="result"></div>
-        
-        <script>
-            document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const formData = new FormData();
-                formData.append('file', document.getElementById('fileInput').files[0]);
-                
-                const resultDiv = document.getElementById('result');
-                resultDiv.innerHTML = 'Đang upload...';
-                
-                try {
-                    const response = await fetch('/upload', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const data = await response.json();
-                    
-                    if (response.ok) {
-                        resultDiv.className = 'success';
-                        resultDiv.innerHTML = `
-                            <strong>✅ ${data.message}</strong><br>
-                            Tên file: ${data.filename}<br>
-                            <a href="${data.url}" target="_blank">📥 Tải về</a>
-                        `;
-                    } else {
-                        resultDiv.className = 'error';
-                        resultDiv.innerHTML = `<strong>❌ Lỗi:</strong> ${data.error}`;
-                    }
-                } catch (error) {
-                    resultDiv.className = 'error';
-                    resultDiv.innerHTML = `<strong>❌ Lỗi:</strong> ${error.message}`;
-                }
-            });
-        </script>
     </body>
     </html>
     '''
     return render_template_string(html)
 
-# --- API 2: UPLOAD FILE (Quan trọng) ---
 @app.route('/upload', methods=['POST'])
-def upload_file():
-    # Kiểm tra có file gửi lên không
+def upload():
     if 'file' not in request.files:
-        return jsonify({"error": "Chưa chọn file"}), 400
+        return "Chưa chọn file!", 400
     
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "Tên file rỗng"}), 400
-
+    filename = str(int(time.time())) + "-" + file.filename
+    
     try:
-        # Đặt tên file (Thêm thời gian để không trùng)
-        filename = str(int(time.time())) + "-" + file.filename
-        
         # Upload lên MinIO
-        s3.upload_fileobj(
-            file,
-            BUCKET_NAME,
-            filename,
-            ExtraArgs={'ContentType': file.content_type} # Để browser hiểu đây là ảnh/pdf...
-        )
-
-        # Trả về link download
-        url = f"http://localhost:9000/{BUCKET_NAME}/{filename}"
+        s3.upload_fileobj(file, BUCKET_NAME, filename)
         
-        return jsonify({
-            "message": "Upload thành công!",
-            "filename": filename,
-            "url": url
-        })
+        # Đặt giới hạn download là 3 lần trong Redis
+        r.set(f"count:{filename}", 3) 
+        
+        # Gửi tin nhắn hẹn giờ xóa (Worker sẽ lo)
+        send_delete_message(filename)
 
+        # Trả về link download (Link này trỏ vào API download bên dưới)
+        return {
+            "message": "Upload thành công! Tối đa 3 lượt tải.",
+            "download_link": f"http://localhost:5000/download/{filename}"
+        }
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return str(e), 500
 
-# 4. Chạy Server
+@app.route('/download/<filename>', methods=['GET'])
+def download(filename):
+    # Kiểm tra lượt tải còn không
+    luot_tai = r.get(f"count:{filename}")
+    
+    if luot_tai is None:
+        return "File không tồn tại hoặc đã bị xóa!", 404
+
+    if int(luot_tai) <= 0:
+        return "Link đã hết hạn (Hết lượt tải)!", 403
+
+    # Giảm lượt tải đi 1
+    r.decr(f"count:{filename}")
+
+    # Lấy link thật từ MinIO để người dùng tải (Tạo presigned URL sống trong 60 giây)
+    try:
+        url = s3.generate_presigned_url('get_object',
+                                        Params={'Bucket': BUCKET_NAME, 'Key': filename},
+                                        ExpiresIn=60)
+        return redirect(url)
+    except Exception as e:
+        return str(e), 500
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(port=5000, debug=True)
