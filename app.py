@@ -4,13 +4,17 @@ import pika
 import redis
 import time
 import json
+import os
 
 app = Flask(__name__)
 
 # --- 1. CẤU HÌNH KẾT NỐI ---
+SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')  # Đặt IP máy chạy Flask/MinIO
+MINIO_HOST = os.getenv('MINIO_HOST', SERVER_HOST)
+
 # Kết nối MinIO (Kho lưu trữ)
 s3 = boto3.client('s3',
-    endpoint_url='http://localhost:9000',
+    endpoint_url=f'http://{MINIO_HOST}:9000',
     aws_access_key_id='admin',
     aws_secret_access_key='password123'
 )
@@ -106,7 +110,7 @@ def upload():
         # Trả về kết quả JSON (với tiếng Việt)
         return jsonify({
             "message": "Upload thành công! Tối đa 3 lượt tải.",
-            "download_link": f"http://localhost:5000/download/{filename}"
+            "download_link": f"http://{SERVER_HOST}:5000/download/{filename}"
         })
     except Exception as e:
         return str(e), 500
@@ -135,4 +139,4 @@ def download(filename):
         return str(e), 500
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
