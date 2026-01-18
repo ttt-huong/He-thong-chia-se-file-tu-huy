@@ -26,6 +26,23 @@ try:
 except:
     pass
 
+# Thêm Lifecycle rule để tự động xóa file cũ (backup khi Worker lỗi)
+try:
+    s3.put_bucket_lifecycle_configuration(
+        Bucket=BUCKET_NAME,
+        LifecycleConfiguration={
+            'Rules': [{
+                'ID': 'AutoDeleteAfter1Day',  # <- Chữ hoa!
+                'Status': 'Enabled',
+                'Expiration': {'Days': 1},
+                'Filter': {'Prefix': ''}
+            }]
+        }
+    )
+    print("--- Lifecycle rule đã được thêm vào! ---")
+except Exception as e:
+    print(f"--- Lifecycle rule error (bỏ qua): {e} ---")
+
 # --- 2. HÀM PHỤ TRỢ ---
 def send_delete_message(filename):
     """Gửi tin nhắn vào RabbitMQ để yêu cầu xóa file sau này"""
@@ -80,17 +97,17 @@ def upload():
         # 1. Upload lên MinIO
         s3.upload_fileobj(file, BUCKET_NAME, filename)
         
-        # 2. Đặt giới hạn download là 3 lần trong Redis
-        r.set(f"count:{filename}", 3) 
+        # 2. Đặt giới hạn download là 3 lần trong Redis (hết hạn sau 3600s = 1 giờ)
+        r.setex(f"count:{filename}", 3600, 3)
         
         # 3. Gửi tin nhắn hẹn giờ xóa (Worker sẽ lo)
         send_delete_message(filename)
 
         # Trả về kết quả JSON (với tiếng Việt)
-        return json.dumps({
+        return jsonify({
             "message": "Upload thành công! Tối đa 3 lượt tải.",
             "download_link": f"http://localhost:5000/download/{filename}"
-        }, ensure_ascii=False), 200, {'Content-Type': 'application/json; charset=utf-8'}
+        })
     except Exception as e:
         return str(e), 500
 
