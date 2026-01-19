@@ -11,6 +11,7 @@ app = Flask(__name__)
 # --- 1. CẤU HÌNH KẾT NỐI ---
 SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')  # Đặt IP máy chạy Flask/MinIO
 MINIO_HOST = os.getenv('MINIO_HOST', SERVER_HOST)
+REDIS_HOST = os.getenv('REDIS_HOST', SERVER_HOST)
 
 # Kết nối MinIO (Kho lưu trữ)
 s3 = boto3.client('s3',
@@ -22,7 +23,7 @@ BUCKET_NAME = 'fileshare'
 
 # Kết nối Redis (Bộ đếm lượt tải)
 # decode_responses=True để khi lấy dữ liệu ra nó là String, không phải Bytes
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
 
 # Tạo Bucket nếu chưa có
 try:

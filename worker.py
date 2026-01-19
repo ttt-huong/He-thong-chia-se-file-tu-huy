@@ -5,8 +5,9 @@ import json
 import os
 
 # --- CẤU HÌNH ---
-RABBITMQ_HOST = 'localhost'
-MINIO_ENDPOINT = 'http://localhost:9000'
+RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
+MINIO_HOST = os.getenv('MINIO_HOST', 'localhost')
+MINIO_ENDPOINT = f'http://{MINIO_HOST}:9000'
 ACCESS_KEY = 'admin'
 SECRET_KEY = 'password123'
 BUCKET_NAME = 'fileshare'
