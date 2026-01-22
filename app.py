@@ -1,58 +1,55 @@
-from flask import Flask, request, redirect, jsonify
-import boto3
+from flask import Flask, request, redirect, jsonify, send_file
 import pika
 import redis
+import socket
 import time
 import json
 import os
 
 app = Flask(__name__)
 
-# --- 1. CẤU HÌNH KẾT NỐI ---
-SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')  # Đặt IP máy chạy Flask/MinIO
-MINIO_HOST = os.getenv('MINIO_HOST', SERVER_HOST)
-REDIS_HOST = os.getenv('REDIS_HOST', SERVER_HOST)
 
-# Kết nối MinIO (Kho lưu trữ)
-s3 = boto3.client('s3',
-    endpoint_url=f'http://{MINIO_HOST}:9000',
-    aws_access_key_id='admin',
-    aws_secret_access_key='password123'
-)
-BUCKET_NAME = 'fileshare'
+def _detect_local_ip():
+    """Best-effort LAN IP detection to avoid returning localhost."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(('8.8.8.8', 80))
+        ip = sock.getsockname()[0]
+        sock.close()
+        return ip
+    except Exception:
+        return 'localhost'
+
+
+# --- 1. CẤU HÌNH KẾT NỐI ---
+_auto_ip = _detect_local_ip()
+SERVER_HOST = os.getenv('SERVER_HOST', _auto_ip)  # Đặt IP máy chạy Flask
+REDIS_HOST = os.getenv('REDIS_HOST', SERVER_HOST)
+RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', SERVER_HOST)
+STORAGE_DIR = os.getenv('STORAGE_DIR', os.path.join(os.path.dirname(__file__), 'storage'))
+os.makedirs(STORAGE_DIR, exist_ok=True)
 
 # Kết nối Redis (Bộ đếm lượt tải)
 # decode_responses=True để khi lấy dữ liệu ra nó là String, không phải Bytes
 r = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
 
-# Tạo Bucket nếu chưa có
-try:
-    s3.create_bucket(Bucket=BUCKET_NAME)
-except:
-    pass
-
-# Thêm Lifecycle rule để tự động xóa file cũ (backup khi Worker lỗi)
-try:
-    s3.put_bucket_lifecycle_configuration(
-        Bucket=BUCKET_NAME,
-        LifecycleConfiguration={
-            'Rules': [{
-                'ID': 'AutoDeleteAfter1Day',  # <- Chữ hoa!
-                'Status': 'Enabled',
-                'Expiration': {'Days': 1},
-                'Filter': {'Prefix': ''}
-            }]
-        }
-    )
-    print("--- Lifecycle rule đã được thêm vào! ---")
-except Exception as e:
-    print(f"--- Lifecycle rule error (bỏ qua): {e} ---")
+print(f"[INIT] STORAGE_DIR = {STORAGE_DIR}")
 
 # --- 2. HÀM PHỤ TRỢ ---
+def resolve_server_host(req):
+    """Chọn host tốt nhất cho link tải; ưu tiên env, sau đó host của request, cuối cùng IP dò được."""
+    if SERVER_HOST not in ('localhost', '127.0.0.1'):
+        return SERVER_HOST
+    host = req.host.split(':')[0]
+    if host not in ('localhost', '127.0.0.1'):
+        return host
+    return _detect_local_ip()
+
+
 def send_delete_message(filename):
     """Gửi tin nhắn vào RabbitMQ để yêu cầu xóa file sau này"""
     try:
-        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
         channel = connection.channel()
         channel.queue_declare(queue='delete_queue')
         
@@ -99,8 +96,9 @@ def upload():
     filename = str(int(time.time())) + "-" + file.filename
     
     try:
-        # 1. Upload lên MinIO
-        s3.upload_fileobj(file, BUCKET_NAME, filename)
+        # 1. Lưu vào ổ đĩa cục bộ
+        save_path = os.path.join(STORAGE_DIR, filename)
+        file.save(save_path)
         
         # 2. Đặt giới hạn download là 3 lần trong Redis (hết hạn sau 3600s = 1 giờ)
         r.setex(f"count:{filename}", 3600, 3)
@@ -109,9 +107,10 @@ def upload():
         send_delete_message(filename)
 
         # Trả về kết quả JSON (với tiếng Việt)
+        server_host = resolve_server_host(request)
         return jsonify({
             "message": "Upload thành công! Tối đa 3 lượt tải.",
-            "download_link": f"http://{SERVER_HOST}:5000/download/{filename}"
+            "download_link": f"http://{server_host}:5000/download/{filename}"
         })
     except Exception as e:
         return str(e), 500
@@ -130,14 +129,11 @@ def download(filename):
     # 2. Giảm lượt tải đi 1
     r.decr(f"count:{filename}")
 
-    # 3. Lấy link thật từ MinIO (Presigned URL sống trong 60s)
-    try:
-        url = s3.generate_presigned_url('get_object',
-                                        Params={'Bucket': BUCKET_NAME, 'Key': filename},
-                                        ExpiresIn=60)
-        return redirect(url)
-    except Exception as e:
-        return str(e), 500
+    # 3. Gửi trực tiếp file từ ổ đĩa
+    file_path = os.path.join(STORAGE_DIR, filename)
+    if not os.path.exists(file_path):
+        return "❌ File đã bị xóa hoặc không tồn tại (disk)!", 404
+    return send_file(file_path, as_attachment=True)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)

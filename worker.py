@@ -1,23 +1,24 @@
 import pika
-import boto3
 import time
 import json
 import os
 
+
+def _detect_local_ip():
+    """Best-effort LAN IP detection to avoid returning localhost."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(('8.8.8.8', 80))
+        ip = sock.getsockname()[0]
+        sock.close()
+        return ip
+    except Exception:
+        return 'localhost'
+
 # --- CẤU HÌNH ---
 RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
-MINIO_HOST = os.getenv('MINIO_HOST', 'localhost')
-MINIO_ENDPOINT = f'http://{MINIO_HOST}:9000'
-ACCESS_KEY = 'admin'
-SECRET_KEY = 'password123'
-BUCKET_NAME = 'fileshare'
-
-# Kết nối MinIO
-s3 = boto3.client('s3',
-    endpoint_url=MINIO_ENDPOINT,
-    aws_access_key_id=ACCESS_KEY,
-    aws_secret_access_key=SECRET_KEY
-)
+STORAGE_DIR = os.getenv('STORAGE_DIR', os.path.join(os.path.dirname(__file__), 'storage'))
+os.makedirs(STORAGE_DIR, exist_ok=True)
 
 print(' [*] Worker đang chạy và chờ tin nhắn xóa file...')
 print(' [*] Nhấn CTRL+C để thoát')
@@ -30,13 +31,17 @@ def callback(ch, method, properties, body):
         
         print(f" [Received] Nhận yêu cầu xóa cho file: {filename}")
 
-        # --- MÔ PHỎNG: Đợi 50 giây trước khi xóa ---
-        print(" ... Đang đếm ngược 50 giây trước khi hủy ...")
-        time.sleep(50)
+        # --- MÔ PHỎNG: Đợi 90 giây trước khi xóa ---
+        print(" ... Đang đếm ngược 90 giây trước khi hủy ...")
+        time.sleep(90)
 
-        # --- THỰC HIỆN XÓA ---
-        s3.delete_object(Bucket=BUCKET_NAME, Key=filename)
-        print(f" [Deleted] Đã xóa vĩnh viễn file: {filename}")
+        # --- THỰC HIỆN XÓA TRÊN Ổ ĐĨA ---
+        file_path = os.path.join(STORAGE_DIR, filename)
+        try:
+            os.remove(file_path)
+            print(f" [Deleted] Đã xóa vĩnh viễn file: {filename}")
+        except FileNotFoundError:
+            print(f" [Skip] File không tồn tại: {filename}")
         print(" ----------------------------------------------------")
 
     except Exception as e:

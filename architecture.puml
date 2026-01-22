@@ -1,0 +1,60 @@
+@startuml architecture_diagram
+!define RECTANGLE class
+
+skinparam backgroundColor #FFFFFF
+skinparam handwritten false
+skinparam defaultFontName Arial
+
+' ===== CLIENT ZONE =====
+rectangle "CLIENT ZONE" #E1F5FF {
+    actor Client as "Client\nBrowser"
+}
+
+' ===== ORCHESTRATION LAYER =====
+rectangle "ORCHESTRATION LAYER (Master Node)" #FFF4E6 {
+    component LB as "Load Balancer\n(Nginx)\n\n📌 Chương 8:\nLoad Balancing\n& Failover"
+    component Gateway as "API Gateway\n(Flask Server)\n\nĐiều phối toàn bộ\nhệ thống"
+}
+
+' ===== MIDDLEWARE LAYER =====
+rectangle "MIDDLEWARE & DATA LAYER" #F3E5F5 {
+    database SQLite as "SQLite Database\n\n📌 Chương 5:\nUUID Identification\n\nLưu Metadata:\nfile_id, title, node_url"
+    storage Redis as "Redis Cache\n\n📌 Chương 4,6:\nDistributed Locking\n(Redlock)\nCaching & Counter"
+    queue RabbitMQ as "RabbitMQ\n\n📌 Chương 3,4:\nMessage Queue\nAsynchronous\nBackground Jobs"
+}
+
+' ===== STORAGE & PROCESSING LAYER =====
+rectangle "STORAGE & PROCESSING LAYER (Slaves & Workers)" #E8F5E9 {
+    storage Node1 as "Storage Node 1\n(Slave Server 1)\n\nLưu file vật lý"
+    storage Node2 as "Storage Node 2\n(Slave Server 2)\n\n📌 Chương 7:\nData Replication"
+    storage Node3 as "Storage Node 3\n(Slave Server 3)\n\nBackup Node"
+    component Worker as "Worker\n(Image Processor)\n\n📌 Chương 3:\nXử lý hậu kỳ\nNén ảnh, Thumbnail"
+}
+
+' ===== LUỒNG UPLOAD =====
+Client -down-> LB : 1. POST /upload
+LB -down-> Gateway : 2. Forward request
+Gateway -down-> SQLite : 3. Lưu Metadata\n(UUID, title, node_url)
+Gateway -down-> Node1 : 4. Lựa chọn node\nlưu file vật lý
+Node1 .right.> Node2 : 5. Auto Replicate
+Node2 .right.> Node3 : 6. Backup
+Gateway -down-> RabbitMQ : 7. Đẩy tin nhắn\n"Xử lý ảnh"
+RabbitMQ -down-> Worker : 8. Worker lấy task
+Worker -up-> Node1 : 9. Đọc ảnh gốc
+Worker -down-> Node1 : 10. Lưu ảnh\nđã xử lý
+
+' ===== LUỒNG DOWNLOAD =====
+Client -down-> LB : 11. GET /download
+Gateway -left-> Redis : 12. Check Cache
+Redis .left.> Gateway : Cache Hit
+Gateway -down-> SQLite : 13. Lấy node_url
+Gateway -down-> Node1 : 14. Tải file
+Gateway -left-> Redis : 15. Update Counter
+Gateway -up-> Client : 16. Return file
+
+' ===== HEALTH MONITORING =====
+Gateway .down.> Node1 : Health Check
+Gateway .down.> Node2 : Health Check
+Gateway .down.> Node3 : Health Check
+
+@enduml
