@@ -5,7 +5,7 @@ Chương 4: Distributed Locking (Redis)
 """
 
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 import logging
 from datetime import datetime
@@ -119,30 +119,33 @@ def create_app():
                 'timestamp': datetime.utcnow().isoformat()
             }), 503
     
-    # Root endpoint
+    # Frontend routes (static files)
+    frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'frontend')
+    
     @app.route('/', methods=['GET'])
     def root():
-        """API information endpoint"""
-        return jsonify({
-            'service': 'Distributed Image Storage System',
-            'version': '2.0.0',
-            'description': 'Hệ thống lưu trữ ảnh phân tán có khả năng tự phục hồi và xử lý hậu kỳ bất đồng bộ',
-            'endpoints': {
-                'health': '/health',
-                'upload': '/api/upload',
-                'download': '/api/download/<file_id>',
-                'file_info': '/api/files/<file_id>',
-                'nodes': '/api/nodes'
-            },
-            'features': [
-                'UUID Identification (Chapter 5)',
-                'Distributed Locking (Chapter 4)',
-                'Auto Replication (Chapter 7)',
-                'Async Processing (Chapter 3)',
-                'Load Balancing (Chapter 8)',
-                'Caching (Chapter 6)'
-            ]
-        }), 200
+        """Serve frontend HTML"""
+        return send_from_directory(frontend_dir, 'index.html')
+    
+    @app.route('/index.html', methods=['GET'])
+    def index_html():
+        """Serve index.html explicitly"""
+        return send_from_directory(frontend_dir, 'index.html')
+    
+    @app.route('/styles.css', methods=['GET'])
+    def styles_css():
+        """Serve styles.css"""
+        return send_from_directory(frontend_dir, 'styles.css')
+    
+    @app.route('/app.js', methods=['GET'])
+    def app_js():
+        """Serve app.js"""
+        return send_from_directory(frontend_dir, 'app.js')
+    
+    @app.route('/js/<path:filename>', methods=['GET'])
+    def js_files(filename):
+        """Serve JS files from js/ directory"""
+        return send_from_directory(os.path.join(frontend_dir, 'js'), filename)
     
     # Error handlers
     @app.errorhandler(404)
