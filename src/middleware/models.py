@@ -18,6 +18,8 @@ DB_PATH = "fileshare.db"
 # Compatibility classes for legacy code that expects SQLAlchemy-like objects
 class File:
     """Fake File class for compatibility"""
+    checksum = None  # Class attribute for compatibility
+    
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -341,6 +343,11 @@ class QueryBuilder:
     def filter(self, condition):
         """Add filter condition (simplified)"""
         self.filters.append(condition)
+        return self
+    
+    def order_by(self, column):
+        """Add order by (ignored - simplified)"""
+        # Simplified: ignore ordering in fake implementation
         return self
     
     def first(self):

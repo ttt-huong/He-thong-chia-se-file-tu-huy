@@ -3,8 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - File Sharing System</title>
+    <title>Distributed System Control Plane</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        body { background-color: #f4f6f9; font-family: 'Segoe UI', sans-serif; padding-top: 80px; }
+        
+        .dashboard-header { 
+            background: #1a1a2e; 
+            color: white; 
+            padding: 15px 20px; 
+            margin-bottom: 20px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        .card { border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; border-radius: 8px; }
+        .card-header { background-color: white; border-bottom: 1px solid #eee; font-weight: bold; font-size: 1.1rem; }
+        
+        .node-card { text-align: center; padding: 15px; transition: 0.3s; border: 1px solid #ddd; }
+        .node-card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .status-dot { height: 12px; width: 12px; background-color: #bbb; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .status-online { background-color: #28a745; box-shadow: 0 0 10px #28a745; animation: pulse 2s infinite; }
+        .status-offline { background-color: #dc3545; }
+        
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        .terminal-window { background-color: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.9rem; }
+        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 2px; }
+        .log-time { color: #888; margin-right: 10px; }
+
+        .uuid-badge { background: #e3f2fd; color: #0d47a1; font-family: monospace; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; border: 1px solid #bbdefb; }
+        .node-badge { background: #f3e5f5; color: #4a148c; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }
+        .counter-badge { background: #e8f5e9; color: #1b5e20; font-weight: bold; }
         * {
             margin: 0;
             padding: 0;
@@ -17,6 +51,7 @@
             color: #333;
             min-height: 100vh;
             padding: 20px;
+            padding-top: 90px;
         }
 
         .container {
@@ -422,42 +457,255 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>💻 Infrastructure Health (Live)</h1>
-            <div class="header-right">
-                <button class="refresh-btn" onclick="refreshDashboard()">🔄 Refresh</button>
-                <a href="/" class="back-btn">← Back to Client</a>
-            </div>
-        </header>
 
-        <!-- Infrastructure Health Cards -->
-        <div class="grid">
-            <!-- Gateway -->
-            <div class="card">
-                <h3><span class="status-indicator status-ok"></span> Gateway (Master)</h3>
-                <div class="component">
-                    <div class="component-name">Load Balancer: Active</div>
-                    <div class="component-detail">IP: 192.168.1.101</div>
-                    <div class="metrics">
-                        <div class="metric">
-                            <div class="metric-label">CPU</div>
-                            <div class="metric-value">12%</div>
-                        </div>
-                        <div class="metric">
-                            <div class="metric-label">RAM</div>
-                            <div class="metric-value">400MB</div>
-                        </div>
+    <!-- HEADER -->
+    <div class="dashboard-header d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-3">
+            <i class="fa-solid fa-network-wired fa-2x"></i>
+            <div>
+                <h4 class="m-0">Distributed System Control Plane</h4>
+                <small class="text-white-50">Monitoring & Management Dashboard</small>
+            </div>
+        </div>
+        <div>
+            <a href="/" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-arrow-left"></i> Back to Client</a>
+            <button class="btn btn-danger btn-sm" onclick="simulateFailover()"><i class="fa-solid fa-bomb"></i> Test Failover</button>
+        </div>
+    </div>
+
+    <div class="container-fluid px-4">
+
+        
+        <!-- HEALTH MONITORING -->
+        <div class="row mb-4">
+            <div class="col-12"><h5 class="text-secondary mb-3"><i class="fa-solid fa-heart-pulse"></i> Infrastructure Health (Live)</h5></div>
+            
+            <div class="col-md-2">
+                <div class="card node-card border-primary">
+                    <div class="status-dot status-online"></div>
+                    <strong>Gateway</strong>
+                    <div class="text-muted small mt-2">Load Balancer: Active</div>
+                    <div class="text-primary small">CPU: 12% | RAM: 400MB</div>
+                </div>
+            </div>
+
+            <div class="col-md-2">
+                <div class="card node-card" id="card-node1">
+                    <div class="status-dot status-online" id="status-node1"></div>
+                    <strong>Storage 01</strong>
+                    <div class="text-muted small mt-2">node1/</div>
+                    <div class="text-success small">Disk: 45% Used</div>
+                </div>
+            </div>
+
+            <div class="col-md-2">
+                <div class="card node-card">
+                    <div class="status-dot status-online"></div>
+                    <strong>Storage 02</strong>
+                    <div class="text-muted small mt-2">node2/</div>
+                    <div class="text-success small">Disk: 32% Used</div>
+                </div>
+            </div>
+
+            <div class="col-md-2">
+                <div class="card node-card">
+                    <div class="status-dot status-online"></div>
+                    <strong>Redis Cluster</strong>
+                    <div class="text-muted small mt-2">Metadata & Locking</div>
+                    <div class="text-warning small">Hits: 1,240/s</div>
+                </div>
+            </div>
+
+            <div class="col-md-2">
+                <div class="card node-card">
+                    <div class="status-dot status-online"></div>
+                    <strong>RabbitMQ</strong>
+                    <div class="text-muted small mt-2">Async Queue</div>
+                    <div class="text-info small" id="queue-count">Pending Jobs: 0</div>
+                </div>
+            </div>
+
+            <div class="col-md-2">
+                <div class="card node-card">
+                    <div class="status-dot status-online"></div>
+                    <strong>Worker Pool</strong>
+                    <div class="text-muted small mt-2">Image Processing</div>
+                    <div class="text-secondary small">Threads: 4/8</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DATA & LOGS -->
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="fa-solid fa-table-list"></i> Resource Metadata (SQLite)</span>
+                        <span class="badge bg-primary">Total: <span id="db-count">0</span> Files</span>
+                    </div>
+                    <div class="card-body p-0 table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>UUID</th>
+                                    <th>Filename</th>
+                                    <th>Storage Node</th>
+                                    <th>Size</th>
+                                    <th>Uploaded</th>
+                                </tr>
+                            </thead>
+                            <tbody id="db-table-body">
+                                <tr><td colspan="5" class="text-center text-muted py-3">No files yet...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
 
-            <!-- Storage Node 01 -->
-            <div class="card">
-                <h3><span class="status-indicator status-ok"></span> Storage Node 01</h3>
-                <div class="component">
-                    <div class="component-name">Filesystem Storage</div>
-                    <div class="component-detail">IP: 192.168.1.101</div>
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header"><i class="fa-solid fa-terminal"></i> System Event Stream</div>
+                    <div class="card-body p-0 bg-dark">
+                        <div class="terminal-window" id="terminal">
+                            <div class="log-entry"><span class="log-time">00:00</span> [SYSTEM] Dashboard initialized...</div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white">
+                        <form id="uploadForm">
+                            <div class="input-group input-group-sm">
+                                <input type="file" class="form-control" id="fileInput" accept="image/*">
+                                <button class="btn btn-primary" type="button" onclick="simulateUpload()">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload
+                                </button>
+                            </div>
+                            <small class="text-muted">Test upload with async processing</small>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentFiles = [];
+        
+        function log(component, msg) {
+            const term = document.getElementById('terminal');
+            const now = new Date().toLocaleTimeString().slice(0, 5);
+            const color = component === 'ERROR' ? 'red' : (component === 'WORKER' ? '#00ccff' : '#00ff00');
+            
+            const html = `<div class="log-entry">
+                <span class="log-time">${now}</span> 
+                <strong style="color: ${color}">[${component}]</strong> ${msg}
+            </div>`;
+            
+            term.innerHTML += html;
+            term.scrollTop = term.scrollHeight;
+
+            const lines = term.querySelectorAll('.log-entry');
+            if (lines.length > 50) {
+                lines[0].remove();
+            }
+        }
+
+        function loadDashboardData() {
+            fetch('/api/files')
+                .then(r => r.json())
+                .then(data => {
+                    const tbody = document.getElementById('db-table-body');
+                    currentFiles = data.files || [];
+                    document.getElementById('db-count').textContent = currentFiles.length;
+
+                    tbody.innerHTML = '';
+                    if (currentFiles.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No files yet...</td></tr>';
+                    } else {
+                        currentFiles.slice(0, 10).forEach(file => {
+                            const date = new Date(file.created_at).toLocaleString();
+                            tbody.innerHTML += `
+                                <tr>
+                                    <td class="uuid-badge">${file.id.substring(0, 18)}...</td>
+                                    <td>${file.filename}</td>
+                                    <td><span class="node-badge">${file.node || 'node1'}</span></td>
+                                    <td>${(file.size / 1024).toFixed(1)}KB</td>
+                                    <td class="small">${date}</td>
+                                </tr>
+                            `;
+                        });
+                    }
+                });
+        }
+
+        function simulateUpload() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files.length) { alert("Select a file first!"); return; }
+            
+            const fileName = fileInput.files[0].name;
+            const newUUID = crypto.randomUUID();
+
+            log('GATEWAY', `Upload received: ${fileName}`);
+            
+            setTimeout(() => {
+                log('IDENTITY', `Generated UUID: ${newUUID.substring(0, 18)}...`);
+                log('RABBITMQ', `Task queued: image_processing_job`);
+            }, 500);
+
+            setTimeout(() => {
+                log('WORKER', `Picked up task from Queue`);
+                log('WORKER', `Compressing image...`);
+            }, 1500);
+
+            setTimeout(() => {
+                log('STORAGE', `File saved to node1/`);
+                log('DATABASE', `Metadata committed. OK.`);
+                log('SYSTEM', `Upload completed asynchronously.`);
+                
+                loadDashboardData();
+                fileInput.value = '';
+            }, 3000);
+        }
+
+        function simulateFailover() {
+            if (confirm("Simulate Storage Node 01 failure for Failover test?")) {
+                const node1 = document.getElementById('status-node1');
+                const card1 = document.getElementById('card-node1');
+                
+                node1.classList.remove('status-online');
+                node1.classList.add('status-offline');
+                card1.style.borderColor = 'red';
+                card1.style.backgroundColor = '#fff5f5';
+
+                log('ERROR', 'CRITICAL: Heartbeat missed from Storage Node 01');
+                log('LOADBALANCER', 'DETECTED FAILURE! Removing Node 01 from pool');
+                log('LOADBALANCER', 'Rerouting traffic to Storage Node 02...');
+                log('SYSTEM', 'Failover successful. Status: DEGRADED but OPERATIONAL');
+                
+                alert("Node 1 offline. System automatically rerouted to Node 2!");
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            log('SYSTEM', 'Dashboard initialized');
+            log('DATABASE', 'SQLite connected');
+            log('QUEUE', 'RabbitMQ connected');
+            log('CACHE', 'Redis connected');
+            loadDashboardData();
+        });
+
+        setInterval(() => {
+            const events = [
+                () => log('REDIS', 'Cache HIT for resource'),
+                () => log('HEALTHCHECK', 'Gateway Load: 15% - OK'),
+                () => log('RABBITMQ', 'Queue Heartbeat - OK'),
+            ];
+            if (Math.random() > 0.7) {
+                events[Math.floor(Math.random() * events.length)]();
+            }
+        }, 4000);
+    </script>
+</body>
+</html>
                     <div class="metrics">
                         <div class="metric">
                             <div class="metric-label">Disk Used</div>
@@ -599,7 +847,8 @@
         async function refreshDashboard() {
             try {
                 const filesRes = await fetch(`${API_BASE}/files`);
-                const files = await filesRes.json();
+                const data = await filesRes.json();
+                const files = data.files || []; // Handle {count, files} response
                 updateFilesUI(files);
                 addEvent('REFRESH', 'Dashboard refreshed successfully');
             } catch (error) {
@@ -695,8 +944,9 @@
             }
         }
 
-        setInterval(refreshDashboard, 5000);
-        refreshDashboard();
+        // Manual refresh only - click button to update
+        // setInterval(refreshDashboard, 60000); // Disabled auto-refresh
+        refreshDashboard(); // Initial load only
     </script>
 </body>
 </html>

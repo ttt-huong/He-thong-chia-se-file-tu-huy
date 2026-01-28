@@ -777,10 +777,14 @@ def get_file_info(file_id: str):
 def list_files():
     """Return recent files with minimal metadata for gallery (masonry)."""
     try:
-        db_session = current_app.db_session
-        # Simple: get latest 50 files
-        files = db_session.query(File).order_by(File.created_at.desc()).limit(50).all()
-        node_selector = NodeSelector(db_session)
+        db = current_app.db
+        # Get all files from database
+        all_files_data = db.get_all_files()
+        
+        # Convert to File objects and limit to 50 most recent
+        files = [File(**f) for f in all_files_data[:50]]
+        
+        node_selector = NodeSelector(current_app.db_session)
         result = []
         for fr in files:
             item = {

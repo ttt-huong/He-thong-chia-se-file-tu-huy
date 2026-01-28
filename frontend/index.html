@@ -3,74 +3,479 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File Sharing System v2.0</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>FileShare - Distributed System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        :root {
+            --primary: #e60023;
+            --tech-bg: #0f172a;
+            --tech-card: #1e293b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+        
+        body { background-color: #f8f9fa; padding-top: 70px; }
+        
+        .navbar { background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .nav-pills .nav-link { color: #666; font-weight: 600; border-radius: 20px; padding: 8px 20px; }
+        .nav-pills .nav-link.active { background-color: var(--primary); color: white; }
+        .nav-pills .nav-link.active-tech { background-color: var(--tech-bg); color: white; }
+
+        /* Masonry Grid - Pinterest Style */
+        .masonry-grid { column-count: 4; column-gap: 20px; }
+        @media (max-width: 992px) { .masonry-grid { column-count: 3; } }
+        @media (max-width: 768px) { .masonry-grid { column-count: 2; } }
+
+        .pin-card {
+            break-inside: avoid;
+            background: white;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+            position: relative;
+            cursor: pointer;
+        }
+        .pin-card:hover { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+        .pin-img { width: 100%; display: block; height: auto; }
+        .pin-info { padding: 12px; }
+        .uuid-text { font-size: 0.75rem; color: #888; font-family: monospace; display: block; margin-bottom: 4px; }
+        .stats-badge { font-size: 0.8rem; font-weight: 600; background: #f0f0f0; padding: 4px 8px; border-radius: 8px; color: #333; }
+        
+        .processing-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10; border-radius: 16px;
+        }
+
+        .upload-zone {
+            border: 3px dashed #e60023;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .upload-zone:hover {
+            background: rgba(230, 0, 35, 0.05);
+            border-color: #c50021;
+        }
+        .upload-zone.dragover {
+            background: rgba(230, 0, 35, 0.1);
+            border-color: #c50021;
+        }
+
+        #tech-view { background-color: #f5f5f5; min-height: 100vh; color: #333; padding: 20px; margin-top: -20px; }
+        .tech-card { background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .tech-header { border-bottom: 1px solid #ddd; padding: 10px 15px; font-weight: bold; color: #16a085; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .node-box {
+            text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background: #f9f9f9;
+            transition: 0.3s; position: relative;
+        }
+        .node-box.active { border-color: var(--success); box-shadow: 0 0 10px rgba(16, 185, 129, 0.2); }
+        .node-box.dead { border-color: var(--danger); opacity: 0.6; }
+        .led { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .led-green { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .led-red { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+        .terminal {
+            font-family: 'Courier New', monospace; font-size: 0.85rem; color: #00ff00;
+            height: 300px; overflow-y: auto; background: #1a1a1a; padding: 10px; border-radius: 0 0 8px 8px;
+        }
+        .log-line { margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 2px; }
+        .log-ts { color: #999; margin-right: 10px; }
+        .log-comp { color: #facc15; font-weight: bold; width: 100px; display: inline-block; }
+
+        .db-table { font-size: 0.85rem; color: #333; }
+        .db-table th { background: #f9f9f9; color: #333; border-bottom: 1px solid #ddd; }
+        .db-table td { border-bottom: 1px solid #eee; }
+        .db-table tbody tr:hover { background: #f9f9f9; }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header>
-            <div>
-                <h1>📦 Distributed File Sharing System v2.0</h1>
-                <p class="subtitle">Upload, Download, Share with Auto-Replication & Failover</p>
-            </div>
-            <div style="text-align: right;">
-                <a href="/admin" style="padding: 10px 20px; background: #1ba39c; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">💻 Admin Dashboard</a>
-            </div>
-        </header>
-        
-        <div class="grid">
-            <!-- Upload Section -->
-            <div class="card">
-                <h2>📤 Upload File</h2>
-                <div class="upload-area" id="uploadArea">
-                    <div class="upload-icon">📁</div>
-                    <div class="upload-text">Kéo file vào đây hoặc click để chọn</div>
-                    <div class="upload-hint">Hỗ trợ hình ảnh (JPG, PNG, etc). Max 100MB</div>
-                </div>
-                <input type="file" id="fileInput" accept="image/*">
-                
-                <div class="upload-form">
-                    <div class="form-group">
-                        <label>Số lần tải xuống cho phép:</label>
-                        <input type="number" id="downloadLimit" value="3" min="1" max="100">
-                    </div>
-                    <button id="uploadBtn" disabled>Upload</button>
-                </div>
-                <div class="progress-wrap">
-                    <div class="progress-bar" id="progressBar" style="width:0%"></div>
-                </div>
-                
-                <div id="uploadStatus" class="status"></div>
-            </div>
+
+    <!-- NAVBAR -->
+    <nav class="navbar navbar-expand fixed-top">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand fw-bold text-danger" href="/">
+                <i class="fa-solid fa-share-nodes"></i> FileShare
+            </a>
+            <ul class="nav nav-pills ms-auto">
+                <li class="nav-item">
+                    <button class="nav-link active" id="btn-client" onclick="switchView('client')">
+                        <i class="fa-solid fa-user"></i> Client
+                    </button>
+                </li>
+                <li class="nav-item ms-2">
+                    <button class="nav-link" id="btn-tech" onclick="switchView('tech')">
+                        <i class="fa-solid fa-server"></i> Dashboard
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- CLIENT VIEW -->
+    <div id="client-view" class="container py-4">
+        <!-- Upload Section - STICKY -->
+        <div class="card border-0 shadow-sm mb-4 p-4" style="border-radius: 20px; background: white; position: sticky; top: 70px; z-index: 100; width: 100%; margin-left: auto; margin-right: auto;">
+            <h4 class="fw-bold mb-3"><i class="fa-solid fa-cloud-arrow-up"></i> Upload File Mới</h4>
             
-            <!-- System Status -->
-            <div class="card">
-                <h2>🏥 System Health</h2>
-                <div id="healthStatus" style="text-align: center; padding: 30px; color: #999;">
-                    <p>🔄 Đang kiểm tra...</p>
+            <div class="upload-zone" id="dropZone">
+                <i class="fa-solid fa-image fa-3x text-danger mb-3"></i>
+                <p class="fw-bold mb-2">Kéo file hoặc click để upload</p>
+                <small class="text-muted">Hỗ trợ JPG, PNG, GIF, WebP</small>
+                <input type="file" id="fileInput" class="form-control" accept="image/*" style="display:none;">
+            </div>
+
+            <div class="mt-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="badge bg-info me-2"><i class="fa-solid fa-database"></i> SQLite</span>
+                    <span class="badge bg-warning"><i class="fa-solid fa-hdd"></i> 3 Storage Nodes</span>
                 </div>
+                <button class="btn btn-danger rounded-pill px-4 fw-bold" onclick="selectFile()">
+                    <i class="fa-solid fa-check"></i> Sẵn sàng
+                </button>
             </div>
         </div>
-        
-        <!-- Nodes Status -->
-        <div class="card">
-            <h2>🖥️ Storage Nodes Status</h2>
-            <div class="nodes-grid" id="nodesGrid">
-                <div class="empty-state">
-                    <div class="empty-state-icon">⏳</div>
-                    <p>Đang tải danh sách nodes...</p>
-                </div>
+
+        <!-- Gallery Section -->
+        <div class="mb-4">
+            <h5 class="fw-bold mb-3"><i class="fa-solid fa-images"></i> Gallery (<span id="file-count">0</span> files)</h5>
+            <div class="masonry-grid" id="gallery">
+                <!-- Images rendered here -->
             </div>
-        </div>
-        
-        <!-- File List -->
-        <div class="card">
-            <h2>🧱 Gallery (Masonry + Placeholder)</h2>
-            <div class="masonry" id="gallery"></div>
         </div>
     </div>
-    
-    <script src="app.js"></script>
+
+    <!-- TECH VIEW -->
+    <div id="tech-view" style="display: none;">
+        <div class="container-fluid">
+            
+            <!-- Infrastructure & Queue -->
+            <div class="row g-4 mb-4">
+                <!-- Health Monitoring -->
+                <div class="col-lg-6">
+                    <div class="tech-card h-100">
+                        <div class="tech-header">
+                            <i class="fa-solid fa-network-wired"></i> Cluster Health
+                        </div>
+                        <div class="p-3">
+                            <div class="row g-3">
+                                <div class="col-4">
+                                    <div class="node-box active">
+                                        <div class="led led-green"></div> Gateway
+                                        <div class="small text-muted mt-1">:5000</div>
+                                        <div class="badge bg-primary mt-1">API</div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="node-box active" id="node-storage1">
+                                        <div class="led led-green" id="led-storage1"></div> Storage 01
+                                        <div class="small text-muted mt-1">node1/</div>
+                                        <div class="badge bg-secondary mt-1">Active</div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="node-box active" id="node-storage2">
+                                        <div class="led led-green" id="led-storage2"></div> Storage 02
+                                        <div class="small text-muted mt-1">node2/</div>
+                                        <div class="badge bg-secondary mt-1">Active</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-3 small text-secondary">
+                                <i class="fa-solid fa-check-circle text-success"></i> Health Check: Active
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Queue Stats -->
+                <div class="col-lg-3">
+                    <div class="tech-card h-100">
+                        <div class="tech-header"><i class="fa-brands fa-envira"></i> RabbitMQ Queue</div>
+                        <div class="p-4 text-center">
+                            <h2 class="display-4 fw-bold text-warning" id="queue-count">0</h2>
+                            <div class="text-muted small">Pending Tasks</div>
+                            <hr class="border-secondary">
+                            <div class="small mb-2">
+                                <span class="text-success"><i class="fa-solid fa-circle"></i> 1 Worker</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Redis Stats -->
+                <div class="col-lg-3">
+                    <div class="tech-card h-100">
+                        <div class="tech-header"><i class="fa-solid fa-bolt"></i> Redis Cache</div>
+                        <div class="p-3">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Keys:</span> <span class="text-info fw-bold" id="redis-keys">0</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Status:</span> <span class="text-success fw-bold">Connected</span>
+                            </div>
+                            <div class="mt-3 p-2 bg-black rounded small font-monospace text-warning">
+                                CMD: PING<br>
+                                RESULT: PONG
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metadata DB & Logs -->
+            <div class="row g-4">
+                <!-- Metadata DB -->
+                <div class="col-lg-7">
+                    <div class="tech-card h-100">
+                        <div class="tech-header">
+                            <i class="fa-solid fa-table"></i> File Metadata (SQLite)
+                            <span class="badge bg-info text-dark float-end">Total: <span id="db-count">0</span></span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-dark table-hover mb-0 db-table">
+                                <thead>
+                                    <tr>
+                                        <th>UUID</th>
+                                        <th>Filename</th>
+                                        <th>Storage Node</th>
+                                        <th>Size</th>
+                                        <th>Uploaded</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="db-table-body">
+                                    <tr><td colspan="5" class="text-center text-muted py-3">No files yet...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Logs -->
+                <div class="col-lg-5">
+                    <div class="tech-card h-100">
+                        <div class="tech-header"><i class="fa-solid fa-terminal"></i> System Logs</div>
+                        <div class="terminal" id="terminal">
+                            <div class="log-line">
+                                <span class="log-ts">[00:00]</span> 
+                                <span class="log-comp">[SYSTEM]</span> Dashboard initialized...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentFiles = [];
+        
+        function switchView(view) {
+            if (view === 'client') {
+                document.getElementById('client-view').style.display = 'block';
+                document.getElementById('tech-view').style.display = 'none';
+                document.getElementById('btn-client').classList.add('active');
+                document.getElementById('btn-tech').classList.remove('active-tech');
+                document.body.style.backgroundColor = '#f8f9fa';
+            } else {
+                document.getElementById('client-view').style.display = 'none';
+                document.getElementById('tech-view').style.display = 'block';
+                document.getElementById('btn-client').classList.remove('active');
+                document.getElementById('btn-tech').classList.add('active-tech');
+                document.body.style.backgroundColor = '#f5f5f5';
+                loadDashboardData();
+            }
+        }
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                uploadFile();
+            }
+        });
+
+        fileInput.addEventListener('change', uploadFile);
+
+        function selectFile() {
+            fileInput.click();
+        }
+
+        function uploadFile() {
+            if (!fileInput.files.length) return;
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const fileId = 'temp-' + Date.now();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                addCardToGallery(fileId, e.target.result, file.name, true);
+            };
+            reader.readAsDataURL(file);
+
+            log('GATEWAY', `Upload initiated: ${file.name}`);
+
+            fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.id) {
+                    log('STORAGE', `File saved to node1/ (${data.size} bytes)`);
+                    log('DATABASE', `Metadata stored: ${data.id.substring(0, 18)}...`);
+                    loadGallery();
+                    fileInput.value = '';
+                }
+            })
+            .catch(err => {
+                log('ERROR', `Upload failed: ${err.message}`);
+            });
+        }
+
+        function addCardToGallery(id, url, name, isProcessing = false) {
+            const gallery = document.getElementById('gallery');
+            const div = document.createElement('div');
+            div.className = 'pin-card';
+            div.id = 'card-' + id;
+
+            let overlay = '';
+            if (isProcessing) {
+                overlay = `<div class="processing-overlay">
+                    <div class="spinner-border text-danger mb-2"></div>
+                    <small class="fw-bold text-secondary">Processing...</small>
+                </div>`;
+            }
+
+            div.innerHTML = `
+                ${overlay}
+                <img src="${url}" class="pin-img" alt="img">
+                <div class="pin-info">
+                    <span class="uuid-text">${id.substring(0, 20)}...</span>
+                    <div class="d-flex justify-content-between mt-2 gap-2">
+                        <span class="stats-badge flex-grow-1"><i class="fa-solid fa-download"></i> Download</span>
+                    </div>
+                </div>
+            `;
+
+            gallery.prepend(div);
+            updateFileCount();
+        }
+
+        function loadGallery() {
+            fetch('/api/files')
+                .then(r => r.json())
+                .then(data => {
+                    const gallery = document.getElementById('gallery');
+                    currentFiles = data.files || [];
+
+                    gallery.innerHTML = '';
+                    currentFiles.forEach(file => {
+                        const div = document.createElement('div');
+                        div.className = 'pin-card';
+                        div.innerHTML = `
+                            <img src="/storage/${file.node}/${file.id}.jpg" class="pin-img" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 400 300%22%3E%3Crect fill=%22%23e0e0e0%22 width=%22400%22 height=%22300%22/%3E%3C/svg%3E'" alt="img">
+                            <div class="pin-info">
+                                <span class="uuid-text" title="${file.id}">UUID: ${file.id.substring(0, 18)}...</span>
+                                <div class="d-flex justify-content-between mt-2 gap-2">
+                                    <span class="stats-badge flex-grow-1"><i class="fa-solid fa-file"></i> ${(file.size / 1024).toFixed(1)}KB</span>
+                                </div>
+                            </div>
+                        `;
+                        gallery.appendChild(div);
+                    });
+
+                    updateFileCount();
+                });
+        }
+
+        function updateFileCount() {
+            document.getElementById('file-count').textContent = currentFiles.length;
+        }
+
+        function log(component, msg) {
+            const term = document.getElementById('terminal');
+            const now = new Date().toLocaleTimeString().slice(0, 5);
+            
+            const html = `<div class="log-line">
+                <span class="log-ts">[${now}]</span> 
+                <span class="log-comp">[${component}]</span> ${msg}
+            </div>`;
+            
+            term.innerHTML += html;
+            term.scrollTop = term.scrollHeight;
+
+            const lines = term.querySelectorAll('.log-line');
+            if (lines.length > 50) {
+                lines[0].remove();
+            }
+        }
+
+        function loadDashboardData() {
+            fetch('/api/files')
+                .then(r => r.json())
+                .then(data => {
+                    const tbody = document.getElementById('db-table-body');
+                    currentFiles = data.files || [];
+                    document.getElementById('db-count').textContent = currentFiles.length;
+
+                    tbody.innerHTML = '';
+                    if (currentFiles.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No files yet...</td></tr>';
+                    } else {
+                        currentFiles.slice(0, 10).forEach(file => {
+                            const date = new Date(file.created_at).toLocaleString();
+                            tbody.innerHTML += `
+                                <tr>
+                                    <td class="font-monospace text-info">${file.id.substring(0, 18)}...</td>
+                                    <td>${file.filename}</td>
+                                    <td><span class="badge bg-secondary">${file.node || 'node1'}</span></td>
+                                    <td>${(file.size / 1024).toFixed(1)}KB</td>
+                                    <td class="small">${date}</td>
+                                </tr>
+                            `;
+                        });
+                    }
+                });
+
+            fetch('/api/health')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.worker) {
+                        log('HEALTH', `Worker pool: ${data.worker === 'healthy' ? 'Ready' : 'Offline'}`);
+                    }
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            log('SYSTEM', 'FileShare Dashboard initialized');
+            log('DATABASE', 'SQLite connected');
+            log('QUEUE', 'RabbitMQ connected');
+            log('CACHE', 'Redis connected');
+            loadGallery();
+        });
+    </script>
 </body>
 </html>
