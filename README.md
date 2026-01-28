@@ -149,7 +149,9 @@ Thay vì sử dụng các giải pháp có sẵn như **MinIO, AWS S3, Google Cl
 
 ---
 
-## 5. Hướng dẫn chạy hệ thống
+## 5. Hướng dẫn chạy hệ thống (v2)
+
+> Lưu ý: Các file legacy ở gốc (app.py, worker.py) đã gỡ bỏ. Sử dụng kiến trúc v2 trong thư mục `src/`.
 
 ### 5.0 Chuẩn bị môi trường
 
@@ -160,7 +162,7 @@ Thay vì sử dụng các giải pháp có sẵn như **MinIO, AWS S3, Google Cl
 
 **Cài đặt dependencies:**
 ```bash
-pip install flask redis pika
+pip install -r requirements.txt
 ```
 
 ### 5.1 Khởi động các service (Docker)
@@ -173,27 +175,33 @@ Lệnh này khởi động:
 - ✅ Redis (port 6379)
 - ✅ RabbitMQ (port 5672, console 15672)
 
-### 5.2 Chạy Flask API Gateway
+### 5.2 Khởi tạo database & storage
+
+```bash
+python scripts/init_db.py
+```
+
+Tạo SQLite metadata DB và seed 3 storage nodes (storage/node1-3).
+
+### 5.3 Chạy Gateway API
 
 **Terminal 1:**
 ```bash
-cd <project-directory>
-python app.py
+python src/gateway/app.py
 ```
 
-Flask sẽ chạy trên: `http://0.0.0.0:5000`
+Gateway chạy tại: `http://0.0.0.0:5000` (LAN: `http://<your-ip>:5000`).
 
-### 5.3 Chạy Worker (xử lý hậu kỳ)
+### 5.4 Chạy Worker (xử lý hậu kỳ)
 
 **Terminal 2:**
 ```bash
-cd <project-directory>
-python worker.py
+python src/worker/worker.py
 ```
 
-Worker sẽ lắng nghe RabbitMQ và xử lý các task từ hàng đợi.
+Worker lắng nghe RabbitMQ `task_queue` và `delete_queue` để nén ảnh, tạo thumbnail, xoá file hết hạn.
 
-### 5.4 Truy cập hệ thống
+### 5.5 Truy cập hệ thống
 
 **Cách 1: Trên máy cục bộ (Localhost)**
 ```
@@ -219,28 +227,20 @@ ngrok http 5000
 
 ## 6. Tính năng hiện tại & Roadmap
 
-### ✅ Tính năng đã hoàn thành (Phiên bản 1.0)
-- Upload ảnh lưu vào Local Disk
-- Download ảnh với giới hạn lượt tải
-- Redis counter (đếm lượt tải)
-- RabbitMQ + Worker xóa file bất đồng bộ
-- Health check cơ bản
+### ✅ Tính năng đã hoàn thành (Phiên bản 2.0)
+- Upload ảnh lưu Local Disk qua Gateway v2
+- SQLite metadata (UUID, checksum), Redis cache + counter
+- Distributed locking (Redis Redlock)
+- Multiple storage nodes + replication + failover
+- Async processing (RabbitMQ + Worker): nén ảnh, thumbnail, auto-delete
+- Health check, node selector, self-healing (failover)
 
-### 🚀 Tính năng sắp triển khai (Phiên bản 2.0)
-- Load Balancer (Nginx) cho cân bằng tải
-- SQLite Database lưu Metadata (UUID)
-- Multiple Storage Nodes với Auto Replication
-- Distributed Locking (Redis Redlock)
-- Image Processing (nén, thumbnail)
-- Monitoring & Logging
-- Kubernetes deployment
-
-### 📋 Tính năng trong tương lai (Phiên bản 3.0+)
-- Compression (GZIP, WebP)
-- CDN integration
-- Rate limiting per user
-- Advanced caching strategy
-- Encryption at rest
+### 🚀 Tính năng tiếp theo (Phiên bản 2.x/3.0)
+- Nginx Load Balancer (Chương 8) cho multi-Gateway
+- Monitoring/metrics, alerting
+- Rate limiting per user/API key
+- Encryption at rest & in transit
+- CDN integration / edge caching
 
 ---
 
@@ -280,12 +280,15 @@ Hệ thống này có thể được nâng cấp để phục vụ:
 - [Mermaid Diagram](architecture.md)
 - [Hướng dẫn vẽ sơ đồ Draw.io](DRAW_GUIDE.md)
 - [Docker Compose](docker-compose.yml)
-- [Flask API Code](app.py)
-- [Worker Code](worker.py)
+- [Gateway API](src/gateway/app.py)
+- [API Routes](src/gateway/routes.py)
+- [Worker](src/worker/worker.py)
+- [Image Processor](src/worker/image_processor.py)
+- [Task Dispatcher](src/worker/tasks.py)
 
 ---
 
-**Phiên bản**: 1.0
+**Phiên bản**: 2.0
 **Ngày cập nhật**: 22/01/2026
 **Tác giả**: Bạn
 

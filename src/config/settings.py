@@ -25,15 +25,44 @@ PORT = int(os.getenv("FLASK_PORT", 5000))
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
 # ===== DATABASE SETTINGS =====
-DATABASE_PATH = os.getenv("DATABASE_PATH", DATA_DIR / "sqlite" / "metadata.db")
-DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+# Support both SQLite (development) and PostgreSQL (production)
+DB_TYPE = os.getenv("DB_TYPE", "sqlite").lower()  # "sqlite" or "postgresql"
+
+if DB_TYPE == "postgresql":
+    # PostgreSQL configuration (HA ready)
+    DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_PORT = int(os.getenv("DB_PORT", 5432))
+    DB_NAME = os.getenv("DB_NAME", "fileshare_db")
+    DB_USER = os.getenv("DB_USER", "fileshare_user")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "secure_password_change_me")
+    
+    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    
+    # Connection pool settings for PostgreSQL
+    DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", 20))
+    DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", 40))
+    DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", 3600))
+    
+else:
+    # SQLite configuration (development/backup)
+    DATABASE_PATH = os.getenv("DATABASE_PATH", str(DATA_DIR / "metadata.db"))
+    DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+    
+    # SQLite specific settings
+    DB_POOL_SIZE = 1
+    DB_MAX_OVERFLOW = 0
+    DB_POOL_RECYCLE = 3600
 
 # ===== REDIS SETTINGS =====
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
-REDIS_URL = f"redis://{'':'' if not REDIS_PASSWORD else f':{REDIS_PASSWORD}@'}{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+# Build Redis URL
+if REDIS_PASSWORD:
+    REDIS_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+else:
+    REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
 
 # ===== RABBITMQ SETTINGS =====
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")

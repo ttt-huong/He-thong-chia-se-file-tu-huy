@@ -1,0 +1,240 @@
+version: '3.9'
+
+# ===== PRODUCTION HA SETUP =====
+# PostgreSQL Master-Slave + Redis Sentinel
+# Docs: See DEPLOYMENT_HA_GUIDE.md
+
+services:
+  # ===== PostgreSQL MASTER =====
+  postgres-master:
+    image: postgres:15-alpine
+    container_name: fileshare-postgres-master
+    environment:
+      POSTGRES_DB: fileshare_db
+      POSTGRES_USER: fileshare_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password_change_me}
+      POSTGRES_INITDB_ARGS: "-c max_connections=200 -c shared_buffers=256MB"
+    volumes:
+      - postgres_master_data:/var/lib/postgresql/data
+      - ./scripts/postgres_master_init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fileshare_user -d fileshare_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - fileshare-network
+    command: |
+      postgres
+      -c wal_level=replica
+      -c max_wal_senders=3
+      -c max_replication_slots=3
+      -c hot_standby=on
+      -c hot_standby_feedback=on
+
+  # ===== PostgreSQL SLAVE 1 =====
+  postgres-slave1:
+    image: postgres:15-alpine
+    container_name: fileshare-postgres-slave1
+    environment:
+      POSTGRES_DB: fileshare_db
+      POSTGRES_USER: fileshare_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password_change_me}
+    volumes:
+      - postgres_slave1_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fileshare_user -d fileshare_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - fileshare-network
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+    command: |
+      bash -c "
+      rm -rf /var/lib/postgresql/data/* || true
+      pg_basebackup -h postgres-master -D /var/lib/postgresql/data -U fileshare_user -v -P -W -R
+      echo 'standby_mode = on' >> /var/lib/postgresql/data/recovery.conf
+      postgres
+      "
+
+  # ===== PostgreSQL SLAVE 2 =====
+  postgres-slave2:
+    image: postgres:15-alpine
+    container_name: fileshare-postgres-slave2
+    environment:
+      POSTGRES_DB: fileshare_db
+      POSTGRES_USER: fileshare_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password_change_me}
+    volumes:
+      - postgres_slave2_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fileshare_user -d fileshare_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - fileshare-network
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+    command: |
+      bash -c "
+      rm -rf /var/lib/postgresql/data/* || true
+      pg_basebackup -h postgres-master -D /var/lib/postgresql/data -U fileshare_user -v -P -W -R
+      echo 'standby_mode = on' >> /var/lib/postgresql/data/recovery.conf
+      postgres
+      "
+
+  # ===== Redis MASTER =====
+  redis-master:
+    image: redis:7-alpine
+    container_name: fileshare-redis-master
+    command: redis-server --appendonly yes --appendfsync everysec
+    volumes:
+      - redis_master_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - fileshare-network
+
+  # ===== Redis SLAVE 1 =====
+  redis-slave1:
+    image: redis:7-alpine
+    container_name: fileshare-redis-slave1
+    command: redis-server --slaveof redis-master 6379 --appendonly yes
+    volumes:
+      - redis_slave1_data:/data
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - fileshare-network
+    depends_on:
+      - redis-master
+
+  # ===== Redis SLAVE 2 =====
+  redis-slave2:
+    image: redis:7-alpine
+    container_name: fileshare-redis-slave2
+    command: redis-server --slaveof redis-master 6379 --appendonly yes
+    volumes:
+      - redis_slave2_data:/data
+    ports:
+      - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - fileshare-network
+    depends_on:
+      - redis-master
+
+  # ===== Redis SENTINEL 1 =====
+  redis-sentinel1:
+    image: redis:7-alpine
+    container_name: fileshare-redis-sentinel1
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./scripts/sentinel.conf:/etc/redis/sentinel.conf:ro
+      - sentinel1_data:/data
+    ports:
+      - "26379:26379"
+    networks:
+      - fileshare-network
+    depends_on:
+      - redis-master
+      - redis-slave1
+      - redis-slave2
+
+  # ===== Redis SENTINEL 2 =====
+  redis-sentinel2:
+    image: redis:7-alpine
+    container_name: fileshare-redis-sentinel2
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./scripts/sentinel.conf:/etc/redis/sentinel.conf:ro
+      - sentinel2_data:/data
+    ports:
+      - "26380:26379"
+    networks:
+      - fileshare-network
+    depends_on:
+      - redis-master
+      - redis-slave1
+      - redis-slave2
+
+  # ===== Redis SENTINEL 3 =====
+  redis-sentinel3:
+    image: redis:7-alpine
+    container_name: fileshare-redis-sentinel3
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./scripts/sentinel.conf:/etc/redis/sentinel.conf:ro
+      - sentinel3_data:/data
+    ports:
+      - "26381:26379"
+    networks:
+      - fileshare-network
+    depends_on:
+      - redis-master
+      - redis-slave1
+      - redis-slave2
+
+  # ===== RabbitMQ =====
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: fileshare-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - fileshare-network
+
+volumes:
+  postgres_master_data:
+  postgres_slave1_data:
+  postgres_slave2_data:
+  redis_master_data:
+  redis_slave1_data:
+  redis_slave2_data:
+  sentinel1_data:
+  sentinel2_data:
+  sentinel3_data:
+  rabbitmq_data:
+
+networks:
+  fileshare-network:
+    driver: bridge

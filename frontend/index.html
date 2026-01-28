@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Sharing System v2.0</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>📦 Distributed File Sharing System v2.0</h1>
+            <p class="subtitle">Upload, Download, Share with Auto-Replication & Failover</p>
+        </header>
+        
+        <div class="grid">
+            <!-- Upload Section -->
+            <div class="card">
+                <h2>📤 Upload File</h2>
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">Kéo file vào đây hoặc click để chọn</div>
+                    <div class="upload-hint">Hỗ trợ hình ảnh (JPG, PNG, etc). Max 100MB</div>
+                </div>
+                <input type="file" id="fileInput" accept="image/*">
+                
+                <div class="upload-form">
+                    <div class="form-group">
+                        <label>Số lần tải xuống cho phép:</label>
+                        <input type="number" id="downloadLimit" value="3" min="1" max="100">
+                    </div>
+                    <button id="uploadBtn" disabled>Upload</button>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-bar" id="progressBar" style="width:0%"></div>
+                </div>
+                
+                <div id="uploadStatus" class="status"></div>
+            </div>
+            
+            <!-- System Status -->
+            <div class="card">
+                <h2>🏥 System Health</h2>
+                <div id="healthStatus" style="text-align: center; padding: 30px; color: #999;">
+                    <p>🔄 Đang kiểm tra...</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Nodes Status -->
+        <div class="card">
+            <h2>🖥️ Storage Nodes Status</h2>
+            <div class="nodes-grid" id="nodesGrid">
+                <div class="empty-state">
+                    <div class="empty-state-icon">⏳</div>
+                    <p>Đang tải danh sách nodes...</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- File List -->
+        <div class="card">
+            <h2>🧱 Gallery (Masonry + Placeholder)</h2>
+            <div class="masonry" id="gallery"></div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

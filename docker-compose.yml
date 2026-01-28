@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  # PostgreSQL (Dev)
+  postgres:
+    image: postgres:15-alpine
+    container_name: dfs-postgres
+    environment:
+      POSTGRES_DB: fileshare_db
+      POSTGRES_USER: fileshare_user
+      POSTGRES_PASSWORD: secure_password_change_me
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fileshare_user -d fileshare_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # Redis (Quản lý khóa & Đếm)
   redis:
     image: redis:alpine
@@ -18,3 +37,6 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: "guest"
       RABBITMQ_DEFAULT_PASS: "guest"
+
+volumes:
+  postgres_data:

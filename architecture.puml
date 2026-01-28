@@ -1,4 +1,4 @@
-@startuml architecture_diagram
+@startuml architecture_diagram_ha
 !define RECTANGLE class
 
 skinparam backgroundColor #FFFFFF
@@ -10,51 +10,110 @@ rectangle "CLIENT ZONE" #E1F5FF {
     actor Client as "Client\nBrowser"
 }
 
-' ===== ORCHESTRATION LAYER =====
-rectangle "ORCHESTRATION LAYER (Master Node)" #FFF4E6 {
-    component LB as "Load Balancer\n(Nginx)\n\n📌 Chương 8:\nLoad Balancing\n& Failover"
-    component Gateway as "API Gateway\n(Flask Server)\n\nĐiều phối toàn bộ\nhệ thống"
+' ===== LOAD BALANCER LAYER =====
+rectangle "LOAD BALANCER LAYER" #FFF4E6 {
+    component LB as "Load Balancer\n(Nginx/HAProxy)\n\n✓ SSL Termination\n✓ Health Checks"
 }
 
-' ===== MIDDLEWARE LAYER =====
-rectangle "MIDDLEWARE & DATA LAYER" #F3E5F5 {
-    database SQLite as "SQLite Database\n\n📌 Chương 5:\nUUID Identification\n\nLưu Metadata:\nfile_id, title, node_url"
-    storage Redis as "Redis Cache\n\n📌 Chương 4,6:\nDistributed Locking\n(Redlock)\nCaching & Counter"
-    queue RabbitMQ as "RabbitMQ\n\n📌 Chương 3,4:\nMessage Queue\nAsynchronous\nBackground Jobs"
+' ===== GATEWAY LAYER =====
+rectangle "GATEWAY LAYER (HA)" #FFF8DC {
+    component GW1 as "API Gateway 1\n(Flask)\n:5000"
+    component GW2 as "API Gateway 2\n(Flask)\n:5001"
+    component GW3 as "API Gateway 3\n(Flask)\n:5002"
 }
 
-' ===== STORAGE & PROCESSING LAYER =====
-rectangle "STORAGE & PROCESSING LAYER (Slaves & Workers)" #E8F5E9 {
-    storage Node1 as "Storage Node 1\n(Slave Server 1)\n\nLưu file vật lý"
-    storage Node2 as "Storage Node 2\n(Slave Server 2)\n\n📌 Chương 7:\nData Replication"
-    storage Node3 as "Storage Node 3\n(Slave Server 3)\n\nBackup Node"
-    component Worker as "Worker\n(Image Processor)\n\n📌 Chương 3:\nXử lý hậu kỳ\nNén ảnh, Thumbnail"
+' ===== DATABASE LAYER - HIGH AVAILABILITY =====
+rectangle "DATABASE LAYER (PostgreSQL HA)" #F3E5F5 {
+    database PG_Master as "PostgreSQL Master\n:5432\n\n✓ Write\n✓ Metadata"
+    database PG_Slave1 as "PostgreSQL Slave 1\n(Streaming Replication)\n\n✓ Read-only"
+    database PG_Slave2 as "PostgreSQL Slave 2\n(Streaming Replication)\n\n✓ Read-only"
 }
 
-' ===== LUỒNG UPLOAD =====
-Client -down-> LB : 1. POST /upload
-LB -down-> Gateway : 2. Forward request
-Gateway -down-> SQLite : 3. Lưu Metadata\n(UUID, title, node_url)
-Gateway -down-> Node1 : 4. Lựa chọn node\nlưu file vật lý
-Node1 .right.> Node2 : 5. Auto Replicate
-Node2 .right.> Node3 : 6. Backup
-Gateway -down-> RabbitMQ : 7. Đẩy tin nhắn\n"Xử lý ảnh"
-RabbitMQ -down-> Worker : 8. Worker lấy task
-Worker -up-> Node1 : 9. Đọc ảnh gốc
-Worker -down-> Node1 : 10. Lưu ảnh\nđã xử lý
+' ===== CACHE LAYER - HIGH AVAILABILITY =====
+rectangle "CACHE LAYER (Redis HA + Sentinel)" #F0E6FF {
+    storage Redis_Master as "Redis Master\n:6379\n\n✓ Write\n✓ Locking"
+    storage Redis_Slave1 as "Redis Slave 1\n:6380\n(Replication)"
+    storage Redis_Slave2 as "Redis Slave 2\n:6381\n(Replication)"
+    component Sentinel as "Sentinel Cluster\n(3 nodes)\n:26379\n\n✓ Monitor\n✓ Failover"
+}
 
-' ===== LUỒNG DOWNLOAD =====
-Client -down-> LB : 11. GET /download
-Gateway -left-> Redis : 12. Check Cache
-Redis .left.> Gateway : Cache Hit
-Gateway -down-> SQLite : 13. Lấy node_url
-Gateway -down-> Node1 : 14. Tải file
-Gateway -left-> Redis : 15. Update Counter
-Gateway -up-> Client : 16. Return file
+' ===== MESSAGE QUEUE =====
+rectangle "MESSAGE QUEUE LAYER" #FFE6E6 {
+    queue RabbitMQ as "RabbitMQ\n:5672\n\n✓ Task Queue\n✓ Durable Queues"
+}
 
-' ===== HEALTH MONITORING =====
-Gateway .down.> Node1 : Health Check
-Gateway .down.> Node2 : Health Check
-Gateway .down.> Node3 : Health Check
+' ===== STORAGE LAYER =====
+rectangle "STORAGE LAYER (Distributed)" #E8F5E9 {
+    storage Node1 as "Storage Node 1\n/storage/node1"
+    storage Node2 as "Storage Node 2\n/storage/node2"
+    storage Node3 as "Storage Node 3\n/storage/node3"
+}
+
+' ===== WORKER LAYER =====
+rectangle "WORKER LAYER (Scalable)" #E0F2F1 {
+    component Worker1 as "Worker 1\n(Image Processor)"
+    component Worker2 as "Worker 2\n(Image Processor)"
+    component WorkerN as "Worker N\n(Scalable)"
+}
+
+' ===== CLIENT FLOWS =====
+Client -down-> LB : HTTP/HTTPS\nRequest
+LB -down-> GW1 : Round Robin\nDistribution
+LB -down-> GW2 : Load Balance
+LB -down-> GW3 : Health Check
+
+' ===== GATEWAY TO DATABASE =====
+GW1 -down-> PG_Master : Write\nMetadata
+GW2 -down-> PG_Master : Write\nMetadata
+GW3 -down-> PG_Master : Write\nMetadata
+
+GW1 -down-> PG_Slave1 : Read\nQueries
+GW2 -down-> PG_Slave2 : Read\nQueries
+
+' ===== POSTGRESQL REPLICATION =====
+PG_Master .right.> PG_Slave1 : Streaming\nReplication
+PG_Master .right.> PG_Slave2 : Streaming\nReplication
+
+' ===== GATEWAY TO CACHE =====
+GW1 -down-> Redis_Master : Distributed\nLocking & Cache\n(Redlock)
+GW2 -down-> Redis_Master : Read/Write\nCache
+GW3 -down-> Redis_Master : Counters
+
+' ===== REDIS REPLICATION & MONITORING =====
+Redis_Master .right.> Redis_Slave1 : Replication
+Redis_Master .right.> Redis_Slave2 : Replication
+Sentinel .left.> Redis_Master : Monitor\nFailover
+Sentinel .left.> Redis_Slave1 : Monitor
+Sentinel .left.> Redis_Slave2 : Monitor
+
+' ===== GATEWAY TO STORAGE NODES =====
+GW1 -down-> Node1 : Select & Store\nFiles
+GW2 -down-> Node2 : Node Selection\nAlgorithm
+GW3 -down-> Node3 : Failover Logic
+
+' ===== STORAGE REPLICATION =====
+Node1 .right.> Node2 : Sync\nReplication
+Node2 .right.> Node3 : Backup
+
+' ===== GATEWAY TO MESSAGE QUEUE =====
+GW1 -down-> RabbitMQ : Publish Tasks\n(Image Processing)
+GW2 -down-> RabbitMQ : Task Events
+GW3 -down-> RabbitMQ : Job Dispatch
+
+' ===== WORKERS =====
+RabbitMQ -down-> Worker1 : Consume Tasks
+RabbitMQ -down-> Worker2 : Auto Retry
+RabbitMQ -down-> WorkerN : Visibility Timeout
+
+' ===== WORKER TO STORAGE =====
+Worker1 -down-> Node1 : Read Original\nWrite Processed
+Worker2 -down-> Node2 : Image Resize\nThumbnail Gen
+WorkerN -down-> Node3 : Backup Processing
+
+' ===== HEALTH & MONITORING =====
+GW1 .down.> Node1 : Health Check
+GW2 .down.> Node2 : Health Check
+GW3 .down.> Node3 : Health Check
+GW1 .down.> RabbitMQ : Health Check
 
 @enduml
