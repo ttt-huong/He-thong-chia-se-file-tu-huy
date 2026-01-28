@@ -13,8 +13,8 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
-            color: #ecf0f1;
+            background: #f5f5f5;
+            color: #333;
             min-height: 100vh;
             padding: 20px;
         }
@@ -29,14 +29,19 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #16a085;
+            padding: 20px 0;
         }
 
         h1 {
-            font-size: 28px;
-            color: #16a085;
+            font-size: 24px;
+            color: #333;
             font-weight: 600;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 10px;
+            align-items: center;
         }
 
         .back-btn {
@@ -49,12 +54,29 @@
             text-decoration: none;
             display: inline-block;
             transition: all 0.3s;
+            font-weight: 600;
         }
 
         .back-btn:hover {
             background: #138d75;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(22, 160, 133, 0.3);
+        }
+
+        .refresh-btn {
+            padding: 10px 20px;
+            background: #16a085;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #138d75;
+            transform: translateY(-2px);
         }
 
         .grid {
@@ -65,29 +87,26 @@
         }
 
         .card {
-            background: rgba(255, 255, 255, 0.07);
-            border: 1px solid rgba(22, 160, 133, 0.4);
+            background: white;
+            border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
-            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             transition: all 0.3s;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
 
         .card:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(22, 160, 133, 0.6);
-            transform: translateY(-4px);
-            box-shadow: 0 12px 40px rgba(22, 160, 133, 0.2);
+            box-shadow: 0 4px 12px rgba(22, 160, 133, 0.15);
+            border-color: #16a085;
         }
 
         .card h3 {
             color: #16a085;
             margin-bottom: 15px;
-            font-size: 16px;
+            font-size: 15px;
             text-transform: uppercase;
             letter-spacing: 1px;
-            font-weight: 600;
+            font-weight: 700;
         }
 
         .status-indicator {
@@ -106,7 +125,7 @@
         }
 
         .status-ok {
-            background: #1abc9c;
+            background: #27ae60;
         }
 
         .status-warning {
@@ -120,21 +139,21 @@
         .component {
             padding: 12px;
             margin-bottom: 10px;
-            background: rgba(22, 160, 133, 0.08);
+            background: #f9f9f9;
             border-left: 3px solid #16a085;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         .component-name {
             font-weight: 600;
             margin-bottom: 5px;
-            color: #ecf0f1;
+            color: #333;
         }
 
         .component-detail {
             font-size: 12px;
-            color: #bdc3c7;
+            color: #666;
             margin: 3px 0;
         }
 
@@ -147,28 +166,51 @@
 
         .metric {
             padding: 10px;
-            background: rgba(22, 160, 133, 0.12);
+            background: #f0f8f7;
             border-radius: 4px;
             font-size: 12px;
-            border: 1px solid rgba(22, 160, 133, 0.2);
+            border: 1px solid #d5f4f1;
         }
 
         .metric-label {
-            color: #95a5a6;
+            color: #666;
             font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            font-weight: 600;
         }
 
         .metric-value {
-            color: #1abc9c;
-            font-weight: 600;
+            color: #16a085;
+            font-weight: 700;
             font-size: 16px;
             margin-top: 5px;
         }
 
         .wide {
             grid-column: 1 / -1;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .total-badge {
+            background: #1e90ff;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
         }
 
         table {
@@ -178,24 +220,24 @@
         }
 
         thead {
-            background: rgba(22, 160, 133, 0.12);
+            background: #f9f9f9;
         }
 
         th {
             padding: 12px;
             text-align: left;
-            color: #16a085;
-            font-weight: 600;
-            border-bottom: 2px solid rgba(22, 160, 133, 0.3);
+            color: #333;
+            font-weight: 700;
+            border-bottom: 2px solid #16a085;
         }
 
         td {
             padding: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid #eee;
         }
 
         tr:hover {
-            background: rgba(22, 160, 133, 0.08);
+            background: #f9f9f9;
         }
 
         .uuid {
@@ -211,7 +253,7 @@
         .badge {
             display: inline-block;
             padding: 4px 10px;
-            border-radius: 3px;
+            border-radius: 12px;
             font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
@@ -219,21 +261,21 @@
         }
 
         .badge-node1 {
-            background: rgba(46, 204, 113, 0.2);
-            color: #2ecc71;
-            border: 1px solid rgba(46, 204, 113, 0.4);
+            background: rgba(46, 204, 113, 0.15);
+            color: #27ae60;
+            border: 1px solid rgba(46, 204, 113, 0.3);
         }
 
         .badge-node2 {
-            background: rgba(52, 152, 219, 0.2);
+            background: rgba(52, 152, 219, 0.15);
             color: #3498db;
-            border: 1px solid rgba(52, 152, 219, 0.4);
+            border: 1px solid rgba(52, 152, 219, 0.3);
         }
 
         .badge-node3 {
-            background: rgba(155, 89, 182, 0.2);
+            background: rgba(155, 89, 182, 0.15);
             color: #9b59b6;
-            border: 1px solid rgba(155, 89, 182, 0.4);
+            border: 1px solid rgba(155, 89, 182, 0.3);
         }
 
         .event-log {
@@ -242,48 +284,63 @@
             font-family: 'Courier New', monospace;
             font-size: 12px;
             line-height: 1.6;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
         }
 
         .event {
-            padding: 10px;
-            margin-bottom: 8px;
-            background: rgba(22, 160, 133, 0.08);
-            border-left: 3px solid #16a085;
-            border-radius: 3px;
+            padding: 8px 0;
+            margin-bottom: 5px;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.1);
+        }
+
+        .event:last-child {
+            border-bottom: none;
         }
 
         .event-time {
-            color: #16a085;
+            color: #00ff00;
             font-weight: 600;
         }
 
         .event-type {
-            color: #f39c12;
+            color: #ffaa00;
             font-weight: 600;
+            margin-left: 10px;
         }
 
         .event-msg {
-            color: #bdc3c7;
-            margin-top: 3px;
+            color: #ccc;
+            margin-top: 2px;
+            margin-left: 15px;
         }
 
         .upload-test {
-            margin-top: 20px;
+            margin-top: 15px;
             padding: 20px;
-            background: rgba(22, 160, 133, 0.12);
-            border: 1px solid rgba(22, 160, 133, 0.4);
+            background: #f0f8f7;
+            border: 1px solid #d5f4f1;
             border-radius: 4px;
             text-align: center;
+        }
+
+        .upload-test p {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 13px;
         }
 
         .upload-test input[type="file"] {
             padding: 8px;
             margin-bottom: 10px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(22, 160, 133, 0.3);
-            color: #ecf0f1;
+            background: white;
+            border: 1px solid #ddd;
+            color: #333;
             border-radius: 4px;
             cursor: pointer;
+            font-size: 13px;
         }
 
         .upload-test input[type="file"]::file-selector-button {
@@ -294,6 +351,7 @@
             border-radius: 3px;
             cursor: pointer;
             font-weight: 600;
+            margin-right: 10px;
         }
 
         .upload-test button {
@@ -307,37 +365,24 @@
             transition: all 0.3s;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            font-size: 13px;
         }
 
         .upload-test button:hover {
             background: #138d75;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(22, 160, 133, 0.3);
         }
 
         .upload-test button:disabled {
-            background: #7f8c8d;
+            background: #999;
             cursor: not-allowed;
             transform: none;
         }
 
-        .refresh-btn {
-            padding: 8px 16px;
-            background: #16a085;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
+        #upload-status {
+            margin-top: 10px;
+            color: #16a085;
             font-size: 12px;
-            font-weight: 600;
-            transition: all 0.3s;
-            margin-right: 10px;
-        }
-
-        .refresh-btn:hover {
-            background: #138d75;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(22, 160, 133, 0.3);
         }
 
         ::-webkit-scrollbar {
@@ -345,7 +390,7 @@
         }
 
         ::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(0, 0, 0, 0.1);
         }
 
         ::-webkit-scrollbar-thumb {
@@ -359,7 +404,19 @@
 
         @media (max-width: 1024px) {
             .grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .grid {
                 grid-template-columns: 1fr;
+            }
+            
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
             }
         }
     </style>
@@ -368,7 +425,7 @@
     <div class="container">
         <header>
             <h1>💻 Infrastructure Health (Live)</h1>
-            <div>
+            <div class="header-right">
                 <button class="refresh-btn" onclick="refreshDashboard()">🔄 Refresh</button>
                 <a href="/" class="back-btn">← Back to Client</a>
             </div>
@@ -381,15 +438,15 @@
                 <h3><span class="status-indicator status-ok"></span> Gateway (Master)</h3>
                 <div class="component">
                     <div class="component-name">Load Balancer: Active</div>
-                    <div class="component-detail">🌐 Address: 127.0.0.1:5000</div>
+                    <div class="component-detail">IP: 192.168.1.101</div>
                     <div class="metrics">
                         <div class="metric">
                             <div class="metric-label">CPU</div>
-                            <div class="metric-value" id="gateway-cpu">-</div>
+                            <div class="metric-value">12%</div>
                         </div>
                         <div class="metric">
-                            <div class="metric-label">Memory</div>
-                            <div class="metric-value" id="gateway-mem">-</div>
+                            <div class="metric-label">RAM</div>
+                            <div class="metric-value">400MB</div>
                         </div>
                     </div>
                 </div>
@@ -400,11 +457,11 @@
                 <h3><span class="status-indicator status-ok"></span> Storage Node 01</h3>
                 <div class="component">
                     <div class="component-name">Filesystem Storage</div>
-                    <div class="component-detail">📍 storage/node1/</div>
+                    <div class="component-detail">IP: 192.168.1.101</div>
                     <div class="metrics">
                         <div class="metric">
                             <div class="metric-label">Disk Used</div>
-                            <div class="metric-value" id="node1-disk">-</div>
+                            <div class="metric-value">45%</div>
                         </div>
                         <div class="metric">
                             <div class="metric-label">Files</div>
@@ -419,11 +476,11 @@
                 <h3><span class="status-indicator status-ok"></span> Storage Node 02</h3>
                 <div class="component">
                     <div class="component-name">Filesystem Storage</div>
-                    <div class="component-detail">📍 storage/node2/</div>
+                    <div class="component-detail">IP: 192.168.1.102</div>
                     <div class="metrics">
                         <div class="metric">
                             <div class="metric-label">Disk Used</div>
-                            <div class="metric-value" id="node2-disk">-</div>
+                            <div class="metric-value">32%</div>
                         </div>
                         <div class="metric">
                             <div class="metric-label">Files</div>
@@ -438,15 +495,15 @@
                 <h3><span class="status-indicator status-ok"></span> Redis Cluster</h3>
                 <div class="component">
                     <div class="component-name">Metadata & Locking</div>
-                    <div class="component-detail">🔴 localhost:6379</div>
+                    <div class="component-detail">localhost:6379</div>
                     <div class="metrics">
                         <div class="metric">
                             <div class="metric-label">Hits</div>
-                            <div class="metric-value" id="redis-hits">-</div>
+                            <div class="metric-value">1,240/s</div>
                         </div>
                         <div class="metric">
                             <div class="metric-label">Keys</div>
-                            <div class="metric-value" id="redis-keys">-</div>
+                            <div class="metric-value">42</div>
                         </div>
                     </div>
                 </div>
@@ -457,7 +514,7 @@
                 <h3><span class="status-indicator status-ok"></span> RabbitMQ</h3>
                 <div class="component">
                     <div class="component-name">Async Queue</div>
-                    <div class="component-detail">🐰 localhost:5672</div>
+                    <div class="component-detail">localhost:5672</div>
                     <div class="metrics">
                         <div class="metric">
                             <div class="metric-label">Pending Jobs</div>
@@ -476,7 +533,7 @@
                 <h3><span class="status-indicator status-ok"></span> Worker Pool</h3>
                 <div class="component">
                     <div class="component-name">Image Processing</div>
-                    <div class="component-detail">🔨 src/worker/worker.py</div>
+                    <div class="component-detail">src/worker/worker.py</div>
                     <div class="metrics">
                         <div class="metric">
                             <div class="metric-label">Threads</div>
@@ -484,7 +541,7 @@
                         </div>
                         <div class="metric">
                             <div class="metric-label">Status</div>
-                            <div class="metric-value" id="worker-status">Ready</div>
+                            <div class="metric-value">Ready</div>
                         </div>
                     </div>
                 </div>
@@ -493,7 +550,10 @@
 
         <!-- Resource Metadata -->
         <div class="card wide">
-            <h3>📊 Resource Metadata (Distributed Ledger) - Total: <span id="total-files">0</span> Files</h3>
+            <div class="section-header">
+                <span class="section-title">📊 Resource Metadata (Distributed Ledger)</span>
+                <span class="total-badge">Total: <span id="total-files">0</span> Files</span>
+            </div>
             <table>
                 <thead>
                     <tr>
@@ -501,37 +561,34 @@
                         <th>Global UUID (Identification)</th>
                         <th>Physical Location (Node)</th>
                         <th>Replication</th>
-                        <th>Cache Hits</th>
+                        <th>Cache</th>
                     </tr>
                 </thead>
                 <tbody id="metadata-table">
                     <tr>
-                        <td colspan="5" style="text-align: center; color: #95a5a6;">Loading files...</td>
+                        <td colspan="5" style="text-align: center; color: #999;">No files yet</td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
-        <!-- System Event Stream -->
-        <div class="card wide">
-            <h3>📡 System Event Stream (Real-time)</h3>
-            <div class="event-log" id="event-log">
-                <div class="event">
-                    <span class="event-time">[init]</span>
-                    <span class="event-type">[SYSTEM]</span>
-                    <div class="event-msg">Dashboard initialized - Waiting for events...</div>
+        <!-- Event Stream & Upload -->
+        <div class="grid">
+            <div class="card wide">
+                <h3>📡 System Event Stream (Real-time)</h3>
+                <div class="event-log" id="event-log">
+                    <div class="event">
+                        <span class="event-time">[10:00:21 AM]</span>
+                        <span class="event-type">[HealthCheck]</span>
+                        <div class="event-msg">Gateway status - OK</div>
+                    </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Upload Test -->
-        <div class="card wide">
-            <h3>🧪 Upload Test</h3>
-            <div class="upload-test">
-                <p style="margin-bottom: 10px;">Upload sẽ đặt task vào RabbitMQ để xử lý bất đồng bộ.</p>
-                <input type="file" id="test-file" accept="image/*">
-                <button onclick="testUpload()" id="upload-btn">☁️ Upload Test</button>
-                <div id="upload-status" style="margin-top: 10px; color: #1ba39c;"></div>
+                <div class="upload-test">
+                    <p>Upload sẽ đặt task vào RabbitMQ để xử lý bất đồng bộ.</p>
+                    <input type="file" id="test-file" accept="image/*">
+                    <button onclick="testUpload()" id="upload-btn">☁️ Upload Test</button>
+                    <div id="upload-status"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -541,53 +598,21 @@
 
         async function refreshDashboard() {
             try {
-                // Fetch health
-                const healthRes = await fetch('/health');
-                const health = await healthRes.json();
-                updateHealthUI(health);
-
-                // Fetch nodes
-                const nodesRes = await fetch(`${API_BASE}/nodes`);
-                const nodes = await nodesRes.json();
-                updateNodesUI(nodes);
-
-                // Fetch files
                 const filesRes = await fetch(`${API_BASE}/files`);
                 const files = await filesRes.json();
                 updateFilesUI(files);
-
-                // Add event log
                 addEvent('REFRESH', 'Dashboard refreshed successfully');
             } catch (error) {
                 addEvent('ERROR', `Refresh failed: ${error.message}`);
             }
         }
 
-        function updateHealthUI(health) {
-            if (health.components) {
-                document.getElementById('gateway-cpu').textContent = health.components.database === 'ok' ? '12%' : 'N/A';
-                document.getElementById('gateway-mem').textContent = health.components.database === 'ok' ? '400MB' : 'N/A';
-                document.getElementById('redis-keys').textContent = health.components.redis === 'ok' ? '42' : '0';
-                document.getElementById('redis-hits').textContent = health.components.redis === 'ok' ? '1,240/s' : '0';
-                document.getElementById('rabbitmq-jobs').textContent = health.components.rabbitmq === 'ok' ? '0' : 'N/A';
-            }
-        }
-
-        function updateNodesUI(nodes) {
-            if (nodes && nodes.length > 0) {
-                document.getElementById('node1-files').textContent = nodes.length || '0';
-                document.getElementById('node2-files').textContent = Math.floor(nodes.length / 2) || '0';
-                document.getElementById('node1-disk').textContent = '45% Used';
-                document.getElementById('node2-disk').textContent = '32% Used';
-            }
-        }
-
         function updateFilesUI(files) {
             document.getElementById('total-files').textContent = files.length;
-
             const tbody = document.getElementById('metadata-table');
+            
             if (files.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #95a5a6;">No files yet</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">No files yet</td></tr>';
                 return;
             }
 
@@ -603,8 +628,8 @@
                     <tr>
                         <td>📄</td>
                         <td><span class="uuid">${file.id || 'N/A'}</span></td>
-                        <td><span class="badge ${nodeBadges[nodeNum]}">Node ${nodeNum}</span></td>
-                        <td><span style="color: #2ecc71;">✓ 2 Copies</span></td>
+                        <td><span class="badge ${nodeBadges[nodeNum]}">192.168.1.10${nodeNum} (Node ${nodeNum})</span></td>
+                        <td><span style="color: #27ae60;">✓ 2 Copies</span></td>
                         <td>${Math.floor(Math.random() * 100)}</td>
                     </tr>
                 `;
@@ -623,7 +648,6 @@
             `;
             eventLog.insertBefore(eventEl, eventLog.firstChild);
 
-            // Keep only last 50 events
             while (eventLog.children.length > 50) {
                 eventLog.removeChild(eventLog.lastChild);
             }
@@ -653,12 +677,10 @@
                 const result = await response.json();
                 if (response.ok) {
                     document.getElementById('upload-status').innerHTML = `
-                        ✅ Upload successful! File ID: <strong>${result.file_id}</strong><br>
-                        Task queued in RabbitMQ for processing.
+                        ✅ Upload successful! File ID: <strong>${result.file_id}</strong>
                     `;
                     addEvent('UPLOAD', `File uploaded: ${file.name}`);
                     fileInput.value = '';
-                    // Refresh after 2 seconds
                     setTimeout(refreshDashboard, 2000);
                 } else {
                     document.getElementById('upload-status').textContent = `❌ Upload failed: ${result.error}`;
@@ -673,10 +695,7 @@
             }
         }
 
-        // Auto-refresh every 5 seconds
         setInterval(refreshDashboard, 5000);
-
-        // Initial load
         refreshDashboard();
     </script>
 </body>
