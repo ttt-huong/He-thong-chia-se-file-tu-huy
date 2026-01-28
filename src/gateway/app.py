@@ -132,6 +132,16 @@ def create_app():
         """Serve index.html explicitly"""
         return send_from_directory(frontend_dir, 'index.html')
     
+    @app.route('/admin', methods=['GET'])
+    def admin():
+        """Serve admin dashboard"""
+        return send_from_directory(frontend_dir, 'admin.html')
+    
+    @app.route('/admin.html', methods=['GET'])
+    def admin_html():
+        """Serve admin.html explicitly"""
+        return send_from_directory(frontend_dir, 'admin.html')
+    
     @app.route('/styles.css', methods=['GET'])
     def styles_css():
         """Serve styles.css"""

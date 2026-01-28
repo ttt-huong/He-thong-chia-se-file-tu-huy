@@ -22,6 +22,9 @@ header {
     border-radius: 4px;
     margin-bottom: 20px;
     border: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 h1 {
