@@ -12,23 +12,68 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Fallback in-memory cache when Redis is unavailable
+class InMemoryCache:
+    """Simple in-memory cache as fallback"""
+    def __init__(self):
+        self.data = {}
+        self.expiry = {}
+    
+    def set(self, key, value, ex=None):
+        """Set key-value with optional expiry in seconds"""
+        self.data[key] = value
+        if ex:
+            self.expiry[key] = time.time() + ex
+    
+    def get(self, key):
+        """Get value, return None if expired or not found"""
+        if key in self.expiry:
+            if time.time() > self.expiry[key]:
+                del self.data[key]
+                del self.expiry[key]
+                return None
+        return self.data.get(key)
+    
+    def delete(self, key):
+        """Delete key"""
+        self.data.pop(key, None)
+        self.expiry.pop(key, None)
+    
+    def setex(self, key, ttl, value):
+        """Set with TTL (for compatibility)"""
+        self.set(key, str(value), ex=ttl)
+    
+    def decr(self, key):
+        """Decrement value"""
+        if key in self.data:
+            val = int(self.data[key]) - 1
+            self.data[key] = str(val)
+            return val
+        return None
+    
+    def ping(self):
+        """Compatibility ping"""
+        return True
+
 
 class RedisClient:
     def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0):
-        """Initialize Redis connection"""
-        self.redis_client = redis.Redis(
-            host=host,
-            port=port,
-            db=db,
-            decode_responses=True,
-            socket_connect_timeout=5,
-        )
+        """Initialize Redis connection with fallback to in-memory cache"""
+        self.using_fallback = False
         try:
+            self.redis_client = redis.Redis(
+                host=host,
+                port=port,
+                db=db,
+                decode_responses=True,
+                socket_connect_timeout=3,
+            )
             self.redis_client.ping()
             logger.info(f"[REDIS] Connected to {host}:{port}")
-        except redis.ConnectionError as e:
-            logger.error(f"[REDIS] Connection failed: {e}")
-            raise
+        except (redis.ConnectionError, ConnectionRefusedError, OSError) as e:
+            logger.warning(f"[REDIS] Connection failed: {e}. Using in-memory cache fallback")
+            self.redis_client = InMemoryCache()
+            self.using_fallback = True
 
     # ===== COUNTER OPERATIONS =====
     def set_download_counter(self, file_id: str, limit: int, ttl: int) -> bool:

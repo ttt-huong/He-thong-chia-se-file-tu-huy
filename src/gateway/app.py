@@ -146,6 +146,11 @@ def create_app():
     def styles_css():
         """Serve styles.css"""
         return send_from_directory(frontend_dir, 'styles.css')
+
+    @app.route('/admin.css', methods=['GET'])
+    def admin_css():
+        """Serve admin.css"""
+        return send_from_directory(frontend_dir, 'admin.css')
     
     @app.route('/app.js', methods=['GET'])
     def app_js():
@@ -156,6 +161,18 @@ def create_app():
     def js_files(filename):
         """Serve JS files from js/ directory"""
         return send_from_directory(os.path.join(frontend_dir, 'js'), filename)
+    
+    # Storage files route
+    storage_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'storage')
+    
+    @app.route('/storage/<node>/<filename>', methods=['GET'])
+    def serve_storage_file(node, filename):
+        """Serve uploaded files from storage"""
+        try:
+            node_dir = os.path.join(storage_dir, node)
+            return send_from_directory(node_dir, filename)
+        except FileNotFoundError:
+            return jsonify({'error': 'File not found'}), 404
     
     # Error handlers
     @app.errorhandler(404)
