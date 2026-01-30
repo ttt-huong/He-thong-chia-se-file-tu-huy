@@ -1,42 +1,178 @@
 version: '3.8'
 
 services:
-  # PostgreSQL (Dev)
-  postgres:
-    image: postgres:15-alpine
-    container_name: dfs-postgres
+  # ==========================================
+  # Gateway API - Entry point cho client
+  # ==========================================
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: fileshare-gateway
+    ports:
+      - "5000:5000"
     environment:
-      POSTGRES_DB: fileshare_db
-      POSTGRES_USER: fileshare_user
-      POSTGRES_PASSWORD: secure_password_change_me
-    ports:
-      - "5432:5432"
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5000
+      - DATABASE_URL=sqlite:////app/data/fileshare.db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - NODE1_URL=http://storage-node1:8000
+      - NODE2_URL=http://storage-node2:8000
+      - NODE3_URL=http://storage-node3:8000
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fileshare_user -d fileshare_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      - gateway-data:/app/data
+      - gateway-logs:/app/logs
+    depends_on:
+      - storage-node1
+      - storage-node2
+      - storage-node3
+      - rabbitmq
+      - redis
+    networks:
+      - fileshare-network
+    restart: unless-stopped
 
-  # Redis (Quản lý khóa & Đếm)
-  redis:
-    image: redis:alpine
-    container_name: dfs-redis
+  # ==========================================
+  # Storage Node 1 - Independent storage service
+  # ==========================================
+  storage-node1:
+    build:
+      context: .
+      dockerfile: Dockerfile.storage
+    container_name: fileshare-node1
+    environment:
+      - NODE_ID=node1
+      - STORAGE_PATH=/data
+      - PORT=8000
+    volumes:
+      - node1-data:/data
     ports:
-      - "6379:6379"
+      - "8001:8000"
+    networks:
+      - fileshare-network
+    restart: unless-stopped
 
-  # RabbitMQ (Hàng đợi tin nhắn)
+  # ==========================================
+  # Storage Node 2 - Independent storage service
+  # ==========================================
+  storage-node2:
+    build:
+      context: .
+      dockerfile: Dockerfile.storage
+    container_name: fileshare-node2
+    environment:
+      - NODE_ID=node2
+      - STORAGE_PATH=/data
+      - PORT=8000
+    volumes:
+      - node2-data:/data
+    ports:
+      - "8002:8000"
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+
+  # ==========================================
+  # Storage Node 3 - Independent storage service
+  # ==========================================
+  storage-node3:
+    build:
+      context: .
+      dockerfile: Dockerfile.storage
+    container_name: fileshare-node3
+    environment:
+      - NODE_ID=node3
+      - STORAGE_PATH=/data
+      - PORT=8000
+    volumes:
+      - node3-data:/data
+    ports:
+      - "8003:8000"
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+
+  # ==========================================
+  # Worker Services - Image processing
+  # ==========================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - DATABASE_URL=sqlite:////app/data/fileshare.db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - NODE1_URL=http://storage-node1:8000
+      - NODE2_URL=http://storage-node2:8000
+      - NODE3_URL=http://storage-node3:8000
+    volumes:
+      - gateway-data:/app/data
+      - worker-logs:/app/logs
+    depends_on:
+      - rabbitmq
+      - redis
+      - gateway
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  # ==========================================
+  # RabbitMQ - Message Queue
+  # ==========================================
   rabbitmq:
-    image: rabbitmq:3-management
-    container_name: dfs-rabbitmq
+    image: rabbitmq:3.12-management-alpine
+    container_name: fileshare-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
     ports:
       - "5672:5672"
       - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: "guest"
-      RABBITMQ_DEFAULT_PASS: "guest"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - fileshare-network
+    restart: unless-stopped
 
+  # ==========================================
+  # Redis - Cache & Distributed Lock
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: fileshare-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+# ==========================================
+# Docker Volumes - Persistent storage
+# ==========================================
 volumes:
-  postgres_data:
+  gateway-data:
+  gateway-logs:
+  node1-data:
+  node2-data:
+  node3-data:
+  worker-logs:
+  rabbitmq-data:
+  redis-data:
+
+# ==========================================
+# Docker Network - Internal communication
+# ==========================================
+networks:
+  fileshare-network:
+    driver: bridge

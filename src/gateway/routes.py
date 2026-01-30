@@ -32,26 +32,34 @@ def allowed_file(filename: str) -> bool:
     return ext in ALLOWED_EXTENSIONS
 
 
-def select_storage_node(db, file_size: int) -> str:
+def select_storage_node(storage_manager, file_size: int) -> str:
     """
-    Select best storage node using round-robin strategy
+    Select best storage node using least-used strategy
+    Docker mode: queries nodes directly via HTTP
     Returns node_id (node1, node2, node3)
     """
     try:
-        # Get all online nodes
-        nodes = db.get_online_nodes()
+        # Get all registered nodes and check health
+        nodes_health = storage_manager.check_all_health()
         
-        if not nodes:
+        if not nodes_health:
+            logger.warning("No storage nodes registered, defaulting to node1")
+            return 'node1'
+        
+        # Filter only online nodes
+        online_nodes = {nid: health for nid, health in nodes_health.items() if health.get('status') == 'online'}
+        
+        if not online_nodes:
             logger.warning("No online nodes found, defaulting to node1")
             return 'node1'
         
-        # Sort by used_space (ascending) - prefer node with least used space
-        nodes_sorted = sorted(nodes, key=lambda n: n.get('used_space', 0))
+        # Sort by file_count (ascending) - prefer node with least files
+        nodes_sorted = sorted(online_nodes.items(), key=lambda x: x[1].get('file_count', 0))
         
-        selected = nodes_sorted[0]
-        logger.info(f"Selected {selected['node_id']} (used: {selected.get('used_space', 0)} bytes)")
+        selected_id = nodes_sorted[0][0]
+        logger.info(f"Selected {selected_id} (files: {nodes_sorted[0][1].get('file_count', 0)})")
         
-        return selected['node_id']
+        return selected_id
     
     except Exception as e:
         logger.error(f"Error selecting node: {e}, defaulting to node1")
@@ -133,17 +141,28 @@ def upload_file():
         logger.info(f"Uploading: {original_filename} - Size: {file_size} bytes")
         
         # Select storage node (load balancing)
-        db = current_app.db
-        selected_node = select_storage_node(db, file_size)
+        storage_manager = current_app.storage_manager
+        selected_node = select_storage_node(storage_manager, file_size)
         
         logger.info(f"Selected node: {selected_node} for file {file_id}")
         
-        # Save to selected storage node
-        storage_path = os.path.join('storage', selected_node, stored_filename)
-        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+        # Upload to selected storage node via HTTP
+        storage_manager = current_app.storage_manager
+        node_client = storage_manager.get_node(selected_node)
         
-        with open(storage_path, 'wb') as f:
-            f.write(file_content)
+        if not node_client:
+            logger.error(f"Storage node {selected_node} not found")
+            return jsonify({'error': 'Storage node unavailable'}), 503
+        
+        try:
+            upload_result = node_client.upload_file(file_content, stored_filename)
+            # Check if upload was successful (storage node returns 'status': 'success')
+            if upload_result.get('status') != 'success':
+                raise Exception(upload_result.get('error', 'Upload failed'))
+            logger.info(f"File uploaded to {selected_node}: {upload_result}")
+        except Exception as upload_err:
+            logger.error(f"Failed to upload to node {selected_node}: {upload_err}")
+            return jsonify({'error': f'Storage upload failed: {str(upload_err)}'}), 500
         
         # Save to database
         expires_at = (datetime.utcnow() + timedelta(seconds=FILE_TTL_SECONDS)).isoformat()
@@ -161,7 +180,7 @@ def upload_file():
         # Update node statistics
         update_node_stats(db, selected_node, file_size)
         
-        logger.info(f"File saved: {file_id} -> {storage_path}")
+        logger.info(f"File saved: {file_id} -> {selected_node}/{stored_filename}")
         
         # Create background task for image processing
         if mime_type.startswith('image/'):
@@ -204,16 +223,27 @@ def download_file(file_id: str):
         if not filename:
             return jsonify({'error': 'File missing filename'}), 500
 
-        file_path = os.path.join('storage', node, filename)
-        if not os.path.exists(file_path):
-            return jsonify({'error': 'File not found on storage'}), 404
-
-        return send_file(
-            file_path,
-            as_attachment=True,
-            download_name=file_record.get('original_name') or filename,
-            mimetype=file_record.get('mime_type') or 'application/octet-stream'
-        )
+        # Download from storage node via HTTP
+        storage_manager = current_app.storage_manager
+        node_client = storage_manager.get_node(node)
+        
+        if not node_client:
+            return jsonify({'error': 'Storage node unavailable'}), 503
+        
+        try:
+            file_content = node_client.download_file(filename)
+            if not file_content:
+                return jsonify({'error': 'File not found on storage'}), 404
+            
+            # Return file content with proper headers
+            from flask import Response
+            response = Response(file_content)
+            response.headers['Content-Type'] = file_record.get('mime_type') or 'application/octet-stream'
+            response.headers['Content-Disposition'] = f'attachment; filename="{file_record.get("original_name") or filename}"'
+            return response
+        except Exception as download_err:
+            logger.error(f"Failed to download from node {node}: {download_err}")
+            return jsonify({'error': 'Download failed'}), 500
     except Exception as e:
         logger.error(f"Download error: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
@@ -256,34 +286,41 @@ def list_files():
 
 @api_bp.route('/nodes', methods=['GET'])
 def get_nodes():
-    """Get storage nodes information with statistics"""
+    """
+    Get storage nodes information with statistics
+    Docker mode: queries nodes directly via HTTP health checks
+    """
     try:
-        db = current_app.db
-        nodes = db.get_storage_nodes()
+        # Get storage manager and query all nodes via HTTP
+        storage_manager = current_app.storage_manager
+        logger.info(f"Storage manager nodes: {storage_manager.nodes.keys() if storage_manager else 'None'}")
+        
+        nodes_health = storage_manager.check_all_health()
+        logger.info(f"Nodes health check result: {nodes_health}")
         
         nodes_data = []
-        for node in nodes:
-            # Calculate statistics
-            free_space = node.get('total_space', 0) - node.get('used_space', 0)
-            usage_percent = (node.get('used_space', 0) / node.get('total_space', 1)) * 100 if node.get('total_space', 0) > 0 else 0
+        for node_id, health_data in nodes_health.items():
+            status = health_data.get('status', 'offline')
+            file_count = health_data.get('file_count', 0)
             
             node_info = {
-                'node_id': node.get('node_id'),
-                'host': node.get('host'),
-                'port': node.get('port'),
-                'path': node.get('path'),
-                'is_online': bool(node.get('is_online', 0)),
-                'total_space': node.get('total_space', 0),
-                'used_space': node.get('used_space', 0),
-                'free_space': free_space,
-                'usage_percent': round(usage_percent, 2),
-                'file_count': node.get('file_count', 0),
-                'error_count': node.get('error_count', 0),
-                'last_heartbeat': node.get('last_heartbeat'),
-                'status': 'online' if node.get('is_online', 0) else 'offline'
+                'node_id': node_id,
+                'host': 'docker',
+                'port': '8000',
+                'path': health_data.get('storage_path', '/data'),
+                'is_online': status == 'online',
+                'total_space': 100 * 1024 * 1024 * 1024,  # 100GB default
+                'used_space': 0,  # TODO: get from node stats endpoint
+                'free_space': 100 * 1024 * 1024 * 1024,
+                'usage_percent': 0,
+                'file_count': file_count,
+                'error_count': 0,
+                'last_heartbeat': health_data.get('timestamp', datetime.utcnow().isoformat()),
+                'status': status
             }
             nodes_data.append(node_info)
         
+        logger.info(f"Returning {len(nodes_data)} nodes")
         return jsonify({
             'total_nodes': len(nodes_data),
             'nodes': nodes_data

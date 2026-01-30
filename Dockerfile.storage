@@ -1,0 +1,25 @@
+# Dockerfile cho Storage Node Service
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install minimal dependencies
+RUN pip install --no-cache-dir flask flask-cors werkzeug
+
+# Copy storage node code
+COPY src/storage_node /app
+
+# Create data directory
+RUN mkdir -p /data
+
+# Expose port
+EXPOSE 8000
+
+# Environment variables
+ENV NODE_ID=node1
+ENV STORAGE_PATH=/data
+ENV PORT=8000
+ENV PYTHONUNBUFFERED=1
+
+# Run storage node
+CMD ["python", "app.py"]

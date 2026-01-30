@@ -23,6 +23,7 @@ from src.config.settings import (
 )
 from src.middleware.models import get_db, get_session
 from src.middleware.redis_client import get_redis_client
+from src.gateway.storage_client import StorageNodeManager
 
 # Configure logging
 os.makedirs(LOGS_DIR, exist_ok=True)
@@ -70,6 +71,28 @@ def create_app():
             raise Exception("Redis health check failed")
     except Exception as e:
         logger.error(f"Failed to initialize Redis: {e}")
+        raise
+    
+    # Initialize Storage Node Manager
+    try:
+        storage_manager = StorageNodeManager()
+        # Register storage nodes from environment variables
+        node1_url = os.getenv('NODE1_URL', 'http://localhost:8001')
+        node2_url = os.getenv('NODE2_URL', 'http://localhost:8002')
+        node3_url = os.getenv('NODE3_URL', 'http://localhost:8003')
+        
+        storage_manager.register_node('node1', node1_url)
+        storage_manager.register_node('node2', node2_url)
+        storage_manager.register_node('node3', node3_url)
+        
+        app.storage_manager = storage_manager
+        logger.info(f"Storage nodes registered: node1={node1_url}, node2={node2_url}, node3={node3_url}")
+        
+        # Check health of all nodes
+        health_status = storage_manager.check_all_health()
+        logger.info(f"Storage nodes health: {health_status}")
+    except Exception as e:
+        logger.error(f"Failed to initialize storage manager: {e}")
         raise
     
     # Register blueprints

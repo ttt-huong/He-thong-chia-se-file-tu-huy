@@ -64,9 +64,11 @@ Thay vì sử dụng các giải pháp có sẵn như **MinIO, AWS S3, Google Cl
 
 ### 3.1 Sơ đồ kiến trúc tổng quát
 
-![Hệ thống lưu trữ ảnh phân tán](image.png)
+![Hệ thống phân tán đa tầng](architecture-diagram.png)
 
-**Ghi chú**: Bạn cần vẽ sơ đồ này trên draw.io hoặc PlantUML. Xem hướng dẫn: [DRAW_GUIDE.md](DRAW_GUIDE.md)
+**🗺️ Implementation Roadmap**: Hệ thống được xây dựng theo 4 phases (Option 3 - Incremental). Xem chi tiết: [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md)
+
+**📊 Current Status**: Phase 1 (80% complete) - Basic Docker Distributed System
 
 ### 3.2 Các vùng (Zones) trong kiến trúc
 

@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local storage (will use Docker volumes)
+storage/
+data/
+logs/
+
+# Database (will use Docker volume)
+*.db
+*.sqlite
+*.sqlite3
+
+# Test files
+test_*.py
+check_*.py
+simple_*.py
+*.ps1
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Misc
+.DS_Store
+*.log
