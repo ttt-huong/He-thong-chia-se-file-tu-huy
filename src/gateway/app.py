@@ -24,6 +24,7 @@ from src.config.settings import (
 from src.middleware.models import get_db, get_session
 from src.middleware.redis_client import get_redis_client
 from src.gateway.storage_client import StorageNodeManager
+from src.gateway.replication_manager import ReplicationManager
 
 # Configure logging
 os.makedirs(LOGS_DIR, exist_ok=True)
@@ -95,6 +96,20 @@ def create_app():
         logger.error(f"Failed to initialize storage manager: {e}")
         raise
     
+    # Initialize Replication Manager for Phase 2
+    try:
+        node_urls = {
+            'node1': os.getenv('NODE1_URL', 'http://localhost:8001'),
+            'node2': os.getenv('NODE2_URL', 'http://localhost:8002'),
+            'node3': os.getenv('NODE3_URL', 'http://localhost:8003')
+        }
+        replication_manager = ReplicationManager(node_urls)
+        app.replication_manager = replication_manager
+        logger.info("Replication Manager initialized for Phase 2: Node Replication & Failover")
+    except Exception as e:
+        logger.error(f"Failed to initialize replication manager: {e}")
+        raise
+    
     # Register blueprints
     from src.gateway.routes import api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
@@ -148,12 +163,18 @@ def create_app():
     @app.route('/', methods=['GET'])
     def root():
         """Serve frontend HTML"""
-        return send_from_directory(frontend_dir, 'index.html')
+        response = send_from_directory(frontend_dir, 'index.html')
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     
     @app.route('/index.html', methods=['GET'])
     def index_html():
         """Serve index.html explicitly"""
-        return send_from_directory(frontend_dir, 'index.html')
+        response = send_from_directory(frontend_dir, 'index.html')
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return response
     
     @app.route('/admin', methods=['GET'])
     def admin():

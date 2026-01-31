@@ -34,33 +34,47 @@ def allowed_file(filename: str) -> bool:
 
 def select_storage_node(storage_manager, file_size: int) -> str:
     """
-    Select best storage node using least-used strategy
-    Docker mode: queries nodes directly via HTTP
+    Select best storage node using least-space (most free space) strategy
+    Docker mode: queries nodes directly via HTTP /stats endpoint
     Returns node_id (node1, node2, node3)
     """
     try:
         # Get all registered nodes and check health
         nodes_health = storage_manager.check_all_health()
-        
         if not nodes_health:
             logger.warning("No storage nodes registered, defaulting to node1")
             return 'node1'
-        
         # Filter only online nodes
         online_nodes = {nid: health for nid, health in nodes_health.items() if health.get('status') == 'online'}
-        
         if not online_nodes:
             logger.warning("No online nodes found, defaulting to node1")
             return 'node1'
-        
-        # Sort by file_count (ascending) - prefer node with least files
-        nodes_sorted = sorted(online_nodes.items(), key=lambda x: x[1].get('file_count', 0))
-        
-        selected_id = nodes_sorted[0][0]
-        logger.info(f"Selected {selected_id} (files: {nodes_sorted[0][1].get('file_count', 0)})")
-        
+
+        # Query /stats for each online node to get free space
+        node_stats = {}
+        for node_id in online_nodes:
+            try:
+                node_client = storage_manager.get_node(node_id)
+                stats = node_client.get_stats()
+                # Assume 100GB default if not present
+                total_space = 100 * 1024 * 1024 * 1024
+                used_space = stats.get('total_size', 0)
+                free_space = total_space - used_space
+                node_stats[node_id] = {
+                    'free_space': free_space,
+                    'file_count': stats.get('file_count', 0)
+                }
+            except Exception as e:
+                logger.warning(f"Failed to get stats for {node_id}: {e}")
+
+        if not node_stats:
+            logger.warning("No stats available for online nodes, defaulting to node1")
+            return 'node1'
+
+        # Select node with most free space
+        selected_id = max(node_stats.items(), key=lambda x: x[1]['free_space'])[0]
+        logger.info(f"Selected {selected_id} (free: {node_stats[selected_id]['free_space'] // (1024*1024)} MB, files: {node_stats[selected_id]['file_count']})")
         return selected_id
-    
     except Exception as e:
         logger.error(f"Error selecting node: {e}, defaulting to node1")
         return 'node1'
@@ -141,7 +155,12 @@ def upload_file():
         logger.info(f"Uploading: {original_filename} - Size: {file_size} bytes")
         
         # Select storage node (load balancing)
-        storage_manager = current_app.storage_manager
+        storage_manager = getattr(current_app, 'storage_manager', None)
+        if not storage_manager:
+            logger.error("storage_manager not found in current_app!")
+            return jsonify({'error': 'Storage manager not initialized'}), 500
+        
+        logger.debug(f"Storage manager has {len(storage_manager.nodes)} nodes registered")
         selected_node = select_storage_node(storage_manager, file_size)
         
         logger.info(f"Selected node: {selected_node} for file {file_id}")
@@ -154,17 +173,25 @@ def upload_file():
             logger.error(f"Storage node {selected_node} not found")
             return jsonify({'error': 'Storage node unavailable'}), 503
         
-        try:
-            upload_result = node_client.upload_file(file_content, stored_filename)
-            # Check if upload was successful (storage node returns 'status': 'success')
-            if upload_result.get('status') != 'success':
-                raise Exception(upload_result.get('error', 'Upload failed'))
-            logger.info(f"File uploaded to {selected_node}: {upload_result}")
-        except Exception as upload_err:
-            logger.error(f"Failed to upload to node {selected_node}: {upload_err}")
-            return jsonify({'error': f'Storage upload failed: {str(upload_err)}'}), 500
+        # Upload to storage node
+        upload_result = node_client.upload_file(file_content, stored_filename)
+        logger.info(f"Upload result from {selected_node}: {upload_result}")
+        
+        # Check if upload was successful (storage node returns 'status': 'success' or 'error')
+        if upload_result.get('status') == 'error':
+            error_msg = upload_result.get('error', 'Unknown upload error')
+            logger.error(f"Upload failed to node {selected_node}: {error_msg}")
+            return jsonify({'error': f'Storage upload failed: {error_msg}'}), 500
+        
+        if upload_result.get('status') != 'success':
+            logger.warning(f"Unexpected status from {selected_node}: {upload_result.get('status')}")
+            # Still treat as error if not explicitly 'success'
+            return jsonify({'error': 'Storage upload returned unexpected status'}), 500
+        
+        logger.info(f"File uploaded successfully to {selected_node}")
         
         # Save to database
+        db = current_app.db
         expires_at = (datetime.utcnow() + timedelta(seconds=FILE_TTL_SECONDS)).isoformat()
         
         db.add_file(
@@ -176,6 +203,20 @@ def upload_file():
             primary_node=selected_node,
             expires_at=expires_at
         )
+        
+        # Replication (Phase 2)
+        replication_manager = getattr(current_app, 'replication_manager', None)
+        if replication_manager:
+            replica_nodes = replication_manager.select_replica_nodes(selected_node)
+            if replica_nodes:
+                replication_results = replication_manager.replicate_file(
+                    file_id=file_id,
+                    filename=stored_filename,
+                    primary_node=selected_node,
+                    replica_nodes=replica_nodes,
+                    db=db
+                )
+                logger.info(f"Replication results for {file_id}: {replication_results}")
         
         # Update node statistics
         update_node_stats(db, selected_node, file_size)
@@ -211,39 +252,66 @@ def upload_file():
 
 @api_bp.route('/download/<file_id>', methods=['GET'])
 def download_file(file_id: str):
-    """Download file endpoint (SIMPLE VERSION)"""
+    """Download file endpoint with failover support (Phase 2)"""
     try:
         db = current_app.db
         file_record = db.get_file(file_id)
         if not file_record:
             return jsonify({'error': 'File not found'}), 404
 
-        node = file_record.get('primary_node', 'node1')
+        primary_node = file_record.get('primary_node', 'node1')
         filename = file_record.get('filename')
+        replica_nodes = file_record.get('replica_nodes', '')
+        
         if not filename:
             return jsonify({'error': 'File missing filename'}), 500
 
-        # Download from storage node via HTTP
+        # Parse replica nodes
+        replica_list = [n.strip() for n in replica_nodes.split(',') if n.strip()] if replica_nodes else []
+        
+        # Try primary node first
         storage_manager = current_app.storage_manager
-        node_client = storage_manager.get_node(node)
+        replication_manager = getattr(current_app, 'replication_manager', None)
         
-        if not node_client:
-            return jsonify({'error': 'Storage node unavailable'}), 503
+        nodes_to_try = [primary_node] + replica_list
         
-        try:
-            file_content = node_client.download_file(filename)
-            if not file_content:
-                return jsonify({'error': 'File not found on storage'}), 404
-            
-            # Return file content with proper headers
-            from flask import Response
-            response = Response(file_content)
-            response.headers['Content-Type'] = file_record.get('mime_type') or 'application/octet-stream'
-            response.headers['Content-Disposition'] = f'attachment; filename="{file_record.get("original_name") or filename}"'
-            return response
-        except Exception as download_err:
-            logger.error(f"Failed to download from node {node}: {download_err}")
-            return jsonify({'error': 'Download failed'}), 500
+        for try_node in nodes_to_try:
+            try:
+                node_client = storage_manager.get_node(try_node)
+                if not node_client:
+                    logger.debug(f"Node client not found for {try_node}")
+                    continue
+                
+                file_content = node_client.download_file(filename)
+                if file_content:
+                    # If we had to failover, update database
+                    if try_node != primary_node:
+                        logger.warning(f"Failover: Downloaded {file_id} from {try_node} (primary {primary_node} failed)")
+                        
+                        if replication_manager:
+                            replication_manager.handle_primary_failure(
+                                file_id=file_id,
+                                filename=filename,
+                                failed_primary=primary_node,
+                                replica_nodes=replica_list,
+                                db=db
+                            )
+                    
+                    # Return file content with proper headers
+                    from flask import Response
+                    response = Response(file_content)
+                    response.headers['Content-Type'] = file_record.get('mime_type') or 'application/octet-stream'
+                    response.headers['Content-Disposition'] = f'attachment; filename="{file_record.get("original_name") or filename}"'
+                    return response
+                    
+            except Exception as e:
+                logger.debug(f"Failed to download from node {try_node}: {e}")
+                continue
+        
+        # All nodes failed
+        logger.error(f"Failed to download {file_id} from all nodes: primary={primary_node}, replicas={replica_list}")
+        return jsonify({'error': 'File unavailable on all nodes'}), 503
+        
     except Exception as e:
         logger.error(f"Download error: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
@@ -292,8 +360,12 @@ def get_nodes():
     """
     try:
         # Get storage manager and query all nodes via HTTP
-        storage_manager = current_app.storage_manager
-        logger.info(f"Storage manager nodes: {storage_manager.nodes.keys() if storage_manager else 'None'}")
+        storage_manager = getattr(current_app, 'storage_manager', None)
+        if not storage_manager:
+            logger.error("storage_manager not found in current_app for get_nodes!")
+            return jsonify({'error': 'Storage manager not initialized', 'total_nodes': 0, 'nodes': []}), 500
+        
+        logger.info(f"Storage manager has nodes: {list(storage_manager.nodes.keys())}")
         
         nodes_health = storage_manager.check_all_health()
         logger.info(f"Nodes health check result: {nodes_health}")
@@ -328,6 +400,46 @@ def get_nodes():
     
     except Exception as e:
         logger.error(f"Get nodes error: {e}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@api_bp.route('/replication/status', methods=['GET'])
+def replication_status():
+    """
+    Get replication status for all files
+    Phase 2: Show file replicas and failover status
+    """
+    try:
+        replication_manager = getattr(current_app, 'replication_manager', None)
+        if not replication_manager:
+            return jsonify({'error': 'Replication manager not initialized'}), 500
+        
+        db = current_app.db
+        
+        # Get all files with replication info
+        all_files = db.get_all_files(limit=1000)
+        
+        files_with_replicas = []
+        for file_data in all_files:
+            files_with_replicas.append({
+                'file_id': file_data.get('id'),
+                'original_name': file_data.get('original_name'),
+                'primary_node': file_data.get('primary_node'),
+                'replica_nodes': file_data.get('replica_nodes', '').split(',') if file_data.get('replica_nodes') else [],
+                'total_replicas': len(file_data.get('replica_nodes', '').split(',')) if file_data.get('replica_nodes') else 0,
+                'size': file_data.get('file_size', 0)
+            })
+        
+        node_health = replication_manager.get_node_health()
+        
+        return jsonify({
+            'total_files': len(files_with_replicas),
+            'files': files_with_replicas,
+            'nodes_health': node_health
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Replication status error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 

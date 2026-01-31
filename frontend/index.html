@@ -245,11 +245,14 @@
                         const div = document.createElement('div');
                         div.className = 'pin-card';
                         div.innerHTML = `
-                            <img src="/storage/${file.node}/${file.filename}" class="pin-img" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 400 300%22%3E%3Crect fill=%22%23e0e0e0%22 width=%22400%22 height=%22300%22/%3E%3C/svg%3E'" alt="img">
+                            <img src="/api/download/${file.id}" class="pin-img" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 400 300%22%3E%3Crect fill=%22%23e0e0e0%22 width=%22400%22 height=%22300%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23999%22 font-size=%2220%22%3EImage Error%3C/text%3E%3C/svg%3E'" alt="img">
                             <div class="pin-info">
                                 <span class="uuid-text" title="${file.id}">UUID: ${file.id.substring(0, 18)}...</span>
                                 <div class="d-flex justify-content-between mt-2 gap-2">
                                     <span class="stats-badge flex-grow-1"><i class="fa-solid fa-file"></i> ${(file.size / 1024).toFixed(1)}KB</span>
+                                    <a href="/api/download/${file.id}" download="${file.original_name}" class="stats-badge text-decoration-none" style="cursor: pointer;" title="Download">
+                                        <i class="fa-solid fa-download"></i> Tải
+                                    </a>
                                 </div>
                             </div>
                         `;

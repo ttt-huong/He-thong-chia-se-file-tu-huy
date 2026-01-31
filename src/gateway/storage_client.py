@@ -45,20 +45,21 @@ class StorageNodeClient:
             logger.error(f"Health check failed for {self.node_id}: {e}")
             return {'status': 'offline', 'error': str(e)}
     
-    def upload_file(self, file_content: bytes, filename: str) -> Dict:
+    def upload_file(self, file_content: bytes, filename: str, is_replica: bool = False) -> Dict:
         """
         Upload file to storage node
         
         Args:
             file_content: File binary content
             filename: Target filename
+            is_replica: Flag indicating replica upload
         
         Returns:
             Dict with upload result {'status': 'success', ...} or {'status': 'error', ...}
         """
         try:
             files = {'file': (filename, file_content)}
-            data = {'filename': filename}
+            data = {'filename': filename, 'is_replica': 'true' if is_replica else 'false'}
             
             response = requests.post(
                 f"{self.node_url}/upload",
