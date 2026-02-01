@@ -14,7 +14,8 @@ services:
     environment:
       - FLASK_HOST=0.0.0.0
       - FLASK_PORT=5000
-      - DATABASE_URL=sqlite:////app/data/fileshare.db
+      - DATABASE_URL=postgresql://postgres:postgres_secure_pass@postgres-master:5432/fileshare
+      - DATABASE_READ_URL=postgresql://postgres:postgres_secure_pass@postgres-standby1:5432/fileshare
       - REDIS_HOST=redis-master
       - REDIS_PORT=6379
       - REDIS_SENTINEL_HOST=redis-sentinel1
@@ -33,6 +34,9 @@ services:
       - storage-node2
       - storage-node3
       - rabbitmq
+      - postgres-master
+      - postgres-standby1
+      - postgres-standby2
       - redis-master
       - redis-slave1
       - redis-slave2
@@ -108,7 +112,8 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     environment:
-      - DATABASE_URL=sqlite:////app/data/fileshare.db
+      - DATABASE_URL=postgresql://postgres:postgres_secure_pass@postgres-master:5432/fileshare
+      - DATABASE_READ_URL=postgresql://postgres:postgres_secure_pass@postgres-standby1:5432/fileshare
       - REDIS_HOST=redis-master
       - REDIS_PORT=6379
       - REDIS_SENTINEL_HOST=redis-sentinel1
@@ -120,10 +125,15 @@ services:
       - NODE2_URL=http://storage-node2:8000
       - NODE3_URL=http://storage-node3:8000
     volumes:
-      - gateway-data:/app/data
       - worker-logs:/app/logs
     depends_on:
       - rabbitmq
+      - postgres-master
+      - postgres-standby1
+      - postgres-standby2
+      - redis-master
+      - redis-slave1
+      - redis-slave2
       - redis-master
       - redis-slave1
       - redis-slave2
@@ -148,6 +158,116 @@ services:
       - "15672:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+
+  # ==========================================
+  # PHASE 4: PostgreSQL Master-Slave Replication
+  # ==========================================
+
+  # PostgreSQL Master
+  postgres-master:
+    image: postgres:15-alpine
+    container_name: postgres-master
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_secure_pass
+      - POSTGRES_DB=fileshare
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-master-data:/var/lib/postgresql/data
+      - ./postgres_config/postgresql-master.conf:/etc/postgresql/postgresql.conf:ro
+      - ./scripts/postgres_init_master.sh:/docker-entrypoint-initdb.d/01-init-master.sh:ro
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c wal_level=replica
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+
+  # PostgreSQL Standby 1
+  postgres-standby1:
+    image: postgres:15-alpine
+    container_name: postgres-standby1
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_secure_pass
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - REPLICATION_USER=replicator
+      - REPLICATION_PASSWORD=replicator_pass_secure
+    volumes:
+      - postgres-standby1-data:/var/lib/postgresql/data
+      - ./postgres_config/postgresql-standby.conf:/etc/postgresql/postgresql.conf:ro
+      - ./scripts/postgres_init_standby.sh:/docker-entrypoint-initdb.d/02-init-standby.sh:ro
+    command: >
+      bash -c "
+      until pg_basebackup -h postgres-master -D /var/lib/postgresql/data/pgdata -U replicator -v -P -W --wal-method=stream 2>/dev/null; do
+        echo 'Waiting for master...'; sleep 3;
+      done;
+      echo 'standby_mode = on' > /var/lib/postgresql/data/pgdata/recovery.conf;
+      echo 'primary_conninfo = \"host=postgres-master port=5432 user=replicator password=replicator_pass_secure\"' >> /var/lib/postgresql/data/pgdata/recovery.conf;
+      chmod 600 /var/lib/postgresql/data/pgdata/recovery.conf;
+      postgres -c config_file=/etc/postgresql/postgresql.conf
+      "
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+
+  # PostgreSQL Standby 2
+  postgres-standby2:
+    image: postgres:15-alpine
+    container_name: postgres-standby2
+    ports:
+      - "5434:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_secure_pass
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - REPLICATION_USER=replicator
+      - REPLICATION_PASSWORD=replicator_pass_secure
+    volumes:
+      - postgres-standby2-data:/var/lib/postgresql/data
+      - ./postgres_config/postgresql-standby.conf:/etc/postgresql/postgresql.conf:ro
+      - ./scripts/postgres_init_standby.sh:/docker-entrypoint-initdb.d/02-init-standby.sh:ro
+    command: >
+      bash -c "
+      until pg_basebackup -h postgres-master -D /var/lib/postgresql/data/pgdata -U replicator -v -P -W --wal-method=stream 2>/dev/null; do
+        echo 'Waiting for master...'; sleep 3;
+      done;
+      echo 'standby_mode = on' > /var/lib/postgresql/data/pgdata/recovery.conf;
+      echo 'primary_conninfo = \"host=postgres-master port=5432 user=replicator password=replicator_pass_secure\"' >> /var/lib/postgresql/data/pgdata/recovery.conf;
+      chmod 600 /var/lib/postgresql/data/pgdata/recovery.conf;
+      postgres -c config_file=/etc/postgresql/postgresql.conf
+      "
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - fileshare-network
     restart: unless-stopped
@@ -274,6 +394,9 @@ volumes:
   redis-master-data:
   redis-slave1-data:
   redis-slave2-data:
+  postgres-master-data:
+  postgres-standby1-data:
+  postgres-standby2-data:
 
 # ==========================================
 # Docker Network - Internal communication
