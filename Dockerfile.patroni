@@ -3,19 +3,12 @@ FROM patroni:2.1-pg15
 # Install required tools
 RUN apk add --no-cache curl ca-certificates
 
-# Create patroni startup wrapper
+# Create patroni config directory  
 RUN mkdir -p /etc/patroni && chmod 755 /etc/patroni
 
-# Copy config if exists
-COPY postgres_config/patroni-*.yml /etc/patroni/ 2>/dev/null || true
-
-# Health check script
-RUN cat > /usr/local/bin/health-check.sh << 'EOF'
-#!/bin/bash
-curl -f http://localhost:8008/health 2>/dev/null || exit 1
-EOF
-
-RUN chmod +x /usr/local/bin/health-check.sh
+# Create health check script  
+RUN printf '#!/bin/bash\ncurl -f http://localhost:8008/health 2>/dev/null || exit 1\n' > /usr/local/bin/health-check.sh && \
+    chmod +x /usr/local/bin/health-check.sh
 
 EXPOSE 5432 8008
 
