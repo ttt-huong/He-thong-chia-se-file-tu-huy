@@ -1,0 +1,4 @@
+# PgBouncer userlist - plain text format
+# Format: "username" "password"
+"postgres" "postgres_secure_pass"
+"stats_collector" "stats_pass"

@@ -2,6 +2,39 @@ version: '3.8'
 
 services:
   # ==========================================
+  # PHASE 4.2: PgBouncer - Connection Pooling
+  # ==========================================
+  pgbouncer:
+    build:
+      context: .
+      dockerfile: Dockerfile.pgbouncer
+    container_name: fileshare-pgbouncer
+    ports:
+      - "6432:6432"
+      - "6431:6431"
+    environment:
+      - PGBOUNCER_DATABASES=fileshare
+      - PGBOUNCER_POOL_MODE=transaction
+      - PGBOUNCER_MAX_CLIENT_CONN=1000
+      - PGBOUNCER_DEFAULT_POOL_SIZE=25
+    volumes:
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer_userlist.txt:/etc/pgbouncer/userlist.txt:ro
+      - pgbouncer-logs:/var/log/pgbouncer
+    depends_on:
+      - postgres-master
+      - postgres-standby1
+      - postgres-standby2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6431/stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+
+  # ==========================================
   # PHASE 4.1: etcd - Consensus store cho Patroni
   # ==========================================
   etcd:
@@ -40,6 +73,7 @@ services:
       - FLASK_PORT=5000
       - DATABASE_URL=postgresql://postgres:postgres_secure_pass@postgres-master:5432/fileshare
       - DATABASE_READ_URL=postgresql://postgres:postgres_secure_pass@postgres-standby1:5432/fileshare
+      - DATABASE_POOL_URL=postgresql://postgres:postgres_secure_pass@pgbouncer:6432/fileshare
       - REDIS_HOST=redis-master
       - REDIS_PORT=6379
       - REDIS_SENTINEL_HOST=redis-sentinel1
@@ -59,6 +93,7 @@ services:
       - storage-node3
       - rabbitmq
       - etcd
+      - pgbouncer
       - postgres-master
       - postgres-standby1
       - postgres-standby2
@@ -139,6 +174,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres_secure_pass@postgres-master:5432/fileshare
       - DATABASE_READ_URL=postgresql://postgres:postgres_secure_pass@postgres-standby1:5432/fileshare
+      - DATABASE_POOL_URL=postgresql://postgres:postgres_secure_pass@pgbouncer:6432/fileshare
       - REDIS_HOST=redis-master
       - REDIS_PORT=6379
       - REDIS_SENTINEL_HOST=redis-sentinel1
@@ -153,6 +189,7 @@ services:
       - worker-logs:/app/logs
     depends_on:
       - rabbitmq
+      - pgbouncer
       - postgres-master
       - postgres-standby1
       - postgres-standby2
@@ -491,6 +528,7 @@ volumes:
   worker-logs:
   rabbitmq-data:
   etcd-data:
+  pgbouncer-logs:
   redis-master-data:
   redis-slave1-data:
   redis-slave2-data:

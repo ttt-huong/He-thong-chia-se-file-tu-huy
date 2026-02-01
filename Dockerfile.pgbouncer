@@ -1,0 +1,26 @@
+FROM pgbouncer:latest
+
+# Install required tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create config directory
+RUN mkdir -p /etc/pgbouncer && chmod 755 /etc/pgbouncer
+
+# Create log directory
+RUN mkdir -p /var/log/pgbouncer && chmod 755 /var/log/pgbouncer
+
+# Create PID directory
+RUN mkdir -p /var/run/pgbouncer && chmod 755 /var/run/pgbouncer
+
+# Expose port
+EXPOSE 6432 6431
+
+# Health check - query PgBouncer admin console
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
+    CMD curl -f http://localhost:6431/stats 2>/dev/null || exit 1
+
+# Default command
+CMD ["pgbouncer", "-R", "/etc/pgbouncer/pgbouncer.ini"]

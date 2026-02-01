@@ -716,3 +716,67 @@ def lock_info(resource_type: str, resource_id: str):
     except Exception as e:
         logger.error(f"Lock info error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ==========================================
+# PHASE 4.2: PgBouncer Connection Pool Monitoring
+# ==========================================
+
+@api_bp.route('/pool/stats', methods=['GET'])
+def pool_stats():
+    """Get PgBouncer connection pool statistics"""
+    try:
+        from src.gateway.pgbouncer_monitor import get_pgbouncer_stats
+        stats = get_pgbouncer_stats()
+        return jsonify(stats), 200 if stats.get('status') == 'ok' else 500
+    except Exception as e:
+        logger.error(f"Pool stats error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/pool/pools', methods=['GET'])
+def pool_pools():
+    """Get PgBouncer pool information (client/server connections per pool)"""
+    try:
+        from src.gateway.pgbouncer_monitor import get_pgbouncer_pools
+        pools = get_pgbouncer_pools()
+        return jsonify(pools), 200 if pools.get('status') == 'ok' else 500
+    except Exception as e:
+        logger.error(f"Pool pools error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/pool/clients', methods=['GET'])
+def pool_clients():
+    """Get connected clients to PgBouncer"""
+    try:
+        from src.gateway.pgbouncer_monitor import get_pgbouncer_clients
+        clients = get_pgbouncer_clients()
+        return jsonify(clients), 200 if clients.get('status') == 'ok' else 500
+    except Exception as e:
+        logger.error(f"Pool clients error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/pool/config', methods=['GET'])
+def pool_config():
+    """Get PgBouncer configuration settings"""
+    try:
+        from src.gateway.pgbouncer_monitor import get_pgbouncer_config
+        config = get_pgbouncer_config()
+        return jsonify(config), 200 if config.get('status') == 'ok' else 500
+    except Exception as e:
+        logger.error(f"Pool config error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/pool/summary', methods=['GET'])
+def pool_summary():
+    """Get summary of connection pool metrics"""
+    try:
+        from src.gateway.pgbouncer_monitor import get_pool_summary
+        summary = get_pool_summary()
+        return jsonify(summary), 200 if summary.get('status') == 'ok' else 500
+    except Exception as e:
+        logger.error(f"Pool summary error: {e}")
+        return jsonify({'error': str(e)}), 500
