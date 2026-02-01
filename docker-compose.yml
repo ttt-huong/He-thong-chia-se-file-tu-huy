@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ==========================================
   # PHASE 4.2: PgBouncer - Connection Pooling
