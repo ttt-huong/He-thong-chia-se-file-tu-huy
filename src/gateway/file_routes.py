@@ -15,7 +15,7 @@ from middleware.jwt_auth import jwt_required, get_current_user_id
 from utils.file_permissions import FilePermissionManager, get_user_files, get_public_files, toggle_file_privacy
 
 # Setup
-file_bp = Blueprint('files', __name__, url_prefix='/api/files')
+file_bp = Blueprint('files', __name__)
 logger = logging.getLogger(__name__)
 
 # Database connection
