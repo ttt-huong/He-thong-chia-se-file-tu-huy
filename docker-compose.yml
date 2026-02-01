@@ -2,6 +2,30 @@ version: '3.8'
 
 services:
   # ==========================================
+  # PHASE 4.1: etcd - Consensus store cho Patroni
+  # ==========================================
+  etcd:
+    image: quay.io/coreos/etcd:v3.5
+    container_name: fileshare-etcd
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    environment:
+      - ETCD_NAME=etcd-node1
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd:2380
+      - ETCD_INITIAL_CLUSTER=etcd-node1=http://etcd:2380
+      - ETCD_INITIAL_CLUSTER_STATE=new
+      - ETCD_INITIAL_CLUSTER_TOKEN=etcd-cluster
+    volumes:
+      - etcd-data:/etcd-data
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+
+  # ==========================================
   # Gateway API - Entry point cho client
   # ==========================================
   gateway:
@@ -34,6 +58,7 @@ services:
       - storage-node2
       - storage-node3
       - rabbitmq
+      - etcd
       - postgres-master
       - postgres-standby1
       - postgres-standby2
@@ -166,29 +191,36 @@ services:
   # PHASE 4: PostgreSQL Master-Slave Replication
   # ==========================================
 
-  # PostgreSQL Master
+  # PostgreSQL Master with Patroni
   postgres-master:
-    image: postgres:15-alpine
+    image: patroni:2.1-pg15
     container_name: postgres-master
     ports:
       - "5432:5432"
+      - "8008:8008"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres_secure_pass
-      - POSTGRES_DB=fileshare
-      - PGDATA=/var/lib/postgresql/data/pgdata
+      - PATRONI_SCOPE=fileshare-cluster
+      - PATRONI_ETCD3_HOSTS=etcd:2379
+      - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data/pgdata
+      - PATRONI_POSTGRESQL_AUTHENTICATION_USERNAME=postgres
+      - PATRONI_POSTGRESQL_AUTHENTICATION_PASSWORD=postgres_secure_pass
+      - PATRONI_POSTGRESQL_PARAMETERS_MAX_CONNECTIONS=200
+      - PATRONI_POSTGRESQL_PARAMETERS_MAX_WAL_SENDERS=10
+      - PATRONI_POSTGRESQL_PARAMETERS_WAL_KEEP_SIZE=1GB
+      - PATRONI_POSTGRESQL_PARAMETERS_SHARED_BUFFERS=256MB
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=postgres_secure_pass
+      - PATRONI_REPLICATION_USERNAME=replicator
+      - PATRONI_REPLICATION_PASSWORD=replicator_pass_secure
+      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=postgres-master:8008
     volumes:
       - postgres-master-data:/var/lib/postgresql/data
-      - ./postgres_config/postgresql-master.conf:/etc/postgresql/postgresql.conf:ro
-      - ./scripts/postgres_init_master.sh:/docker-entrypoint-initdb.d/01-init-master.sh:ro
-    command: >
-      postgres
-      -c config_file=/etc/postgresql/postgresql.conf
-      -c wal_level=replica
-      -c max_wal_senders=10
-      -c max_replication_slots=10
+      - ./postgres_config/patroni-master.yml:/etc/patroni/patroni.yml:ro
+    depends_on:
+      - etcd
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -196,8 +228,114 @@ services:
       - fileshare-network
     restart: unless-stopped
 
-  # PostgreSQL Standby 1
+  # PostgreSQL Standby 1 with Patroni
   postgres-standby1:
+    image: patroni:2.1-pg15
+    container_name: postgres-standby1
+    ports:
+      - "5433:5432"
+      - "8009:8008"
+    environment:
+      - PATRONI_SCOPE=fileshare-cluster
+      - PATRONI_ETCD3_HOSTS=etcd:2379
+      - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data/pgdata
+      - PATRONI_POSTGRESQL_AUTHENTICATION_USERNAME=postgres
+      - PATRONI_POSTGRESQL_AUTHENTICATION_PASSWORD=postgres_secure_pass
+      - PATRONI_POSTGRESQL_PARAMETERS_MAX_CONNECTIONS=200
+      - PATRONI_POSTGRESQL_PARAMETERS_HOT_STANDBY=on
+      - PATRONI_POSTGRESQL_PARAMETERS_HOT_STANDBY_FEEDBACK=on
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=postgres_secure_pass
+      - PATRONI_REPLICATION_USERNAME=replicator
+      - PATRONI_REPLICATION_PASSWORD=replicator_pass_secure
+      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=postgres-standby1:8008
+    volumes:
+      - postgres-standby1-data:/var/lib/postgresql/data
+      - ./postgres_config/patroni-standby.yml:/etc/patroni/patroni.yml:ro
+    depends_on:
+      - etcd
+      - postgres-master
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+
+  # PostgreSQL Standby 2 with Patroni
+  postgres-standby2:
+    image: patroni:2.1-pg15
+    container_name: postgres-standby2
+    ports:
+      - "5434:5432"
+      - "8010:8008"
+    environment:
+      - PATRONI_SCOPE=fileshare-cluster
+      - PATRONI_ETCD3_HOSTS=etcd:2379
+      - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data/pgdata
+      - PATRONI_POSTGRESQL_AUTHENTICATION_USERNAME=postgres
+      - PATRONI_POSTGRESQL_AUTHENTICATION_PASSWORD=postgres_secure_pass
+      - PATRONI_POSTGRESQL_PARAMETERS_MAX_CONNECTIONS=200
+      - PATRONI_POSTGRESQL_PARAMETERS_HOT_STANDBY=on
+      - PATRONI_POSTGRESQL_PARAMETERS_HOT_STANDBY_FEEDBACK=on
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=postgres_secure_pass
+      - PATRONI_REPLICATION_USERNAME=replicator
+      - PATRONI_REPLICATION_PASSWORD=replicator_pass_secure
+      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=postgres-standby2:8008
+    volumes:
+      - postgres-standby2-data:/var/lib/postgresql/data
+      - ./postgres_config/patroni-standby.yml:/etc/patroni/patroni.yml:ro
+    depends_on:
+      - etcd
+      - postgres-master
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+
+  # ==========================================
+  # Old PostgreSQL setup (commented for reference)
+  # ==========================================
+  # postgres-master:
+    # image: postgres:15-alpine
+    # container_name: postgres-master
+    # ports:
+    #   - "5432:5432"
+    # environment:
+    #   - POSTGRES_USER=postgres
+    #   - POSTGRES_PASSWORD=postgres_secure_pass
+    #   - POSTGRES_DB=fileshare
+    #   - PGDATA=/var/lib/postgresql/data/pgdata
+    # volumes:
+    #   - postgres-master-data:/var/lib/postgresql/data
+    #   - ./postgres_config/postgresql-master.conf:/etc/postgresql/postgresql.conf:ro
+    #   - ./scripts/postgres_init_master.sh:/docker-entrypoint-initdb.d/01-init-master.sh:ro
+    # command: >
+    #   postgres
+    #   -c config_file=/etc/postgresql/postgresql.conf
+    #   -c wal_level=replica
+    #   -c max_wal_senders=10
+    #   -c max_replication_slots=10
+    # healthcheck:
+    #   test: ["CMD-SHELL", "pg_isready -U postgres"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    # networks:
+    #   - fileshare-network
+    # restart: unless-stopped
+
+  # PostgreSQL Standby 1
+  postgres-standby1-old:
     image: postgres:15-alpine
     container_name: postgres-standby1
     ports:
@@ -233,9 +371,11 @@ services:
     networks:
       - fileshare-network
     restart: unless-stopped
+    profiles:
+      - legacy
 
-  # PostgreSQL Standby 2
-  postgres-standby2:
+  # PostgreSQL Standby 2 (Legacy - commented for Patroni)
+  postgres-standby2-legacy:
     image: postgres:15-alpine
     container_name: postgres-standby2
     ports:
@@ -271,6 +411,8 @@ services:
     networks:
       - fileshare-network
     restart: unless-stopped
+    profiles:
+      - legacy
 
   # ==========================================
   # PHASE 3: Redis Master-Slave Cluster with Sentinel
@@ -391,6 +533,7 @@ volumes:
   node3-data:
   worker-logs:
   rabbitmq-data:
+  etcd-data:
   redis-master-data:
   redis-slave1-data:
   redis-slave2-data:

@@ -1,0 +1,83 @@
+# Patroni Configuration for PostgreSQL Master
+# Auto-failover, health checking, master election
+scope: fileshare-cluster
+namespace: /patroni
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: postgres-master:8008
+
+etcd3:
+  host: etcd:2379
+  protocol: http
+
+postgresql:
+  data_dir: /var/lib/postgresql/data/pgdata
+  pgpass: /var/lib/postgresql/.pgpass
+  
+  authentication:
+    username: postgres
+    password: postgres_secure_pass
+  
+  parameters:
+    # Replication settings
+    wal_level: replica
+    max_wal_senders: 10
+    max_replication_slots: 10
+    wal_keep_size: 1GB
+    hot_standby: on
+    hot_standby_feedback: on
+    
+    # Performance tuning
+    shared_buffers: 256MB
+    effective_cache_size: 1GB
+    maintenance_work_mem: 64MB
+    checkpoint_completion_target: 0.9
+    wal_buffers: 16MB
+    default_statistics_target: 100
+    random_page_cost: 1.1
+    effective_io_concurrency: 200
+    work_mem: 1966kB
+    min_wal_size: 1GB
+    max_wal_size: 4GB
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    maximum_lag_on_failover: 1048576
+    master_start_timeout: 300
+    synchronous_mode: true
+    synchronous_node_count: 1
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      recovery_conf:
+        restore_command: 'cp /var/lib/postgresql/wal_archive/%f %p'
+
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+  pg_hba:
+    - type: host
+      database: all
+      user: all
+      address: 0.0.0.0/0
+      method: md5
+    - type: host
+      database: replication
+      user: replicator
+      address: 0.0.0.0/0
+      method: md5
+
+  users:
+    postgres:
+      password: postgres_secure_pass
+      options:
+        - createrole
+        - createdb
+    replicator:
+      password: replicator_pass_secure
+      options:
+        - replication
