@@ -10,9 +10,9 @@ import logging
 from datetime import datetime
 import uuid
 
-from middleware.auth_models import Base, User, File, FileAccessLog
-from middleware.jwt_auth import jwt_required, get_current_user_id
-from utils.file_permissions import FilePermissionManager, get_user_files, get_public_files, toggle_file_privacy
+from src.middleware.auth_models import Base, User, File, FileAccessLog
+from src.middleware.jwt_auth import jwt_required, get_current_user_id
+from src.utils.file_permissions import FilePermissionManager, get_user_files, get_public_files, toggle_file_privacy
 
 # Setup
 file_bp = Blueprint('files', __name__)

@@ -8,8 +8,8 @@ from sqlalchemy.orm import sessionmaker
 import os
 import logging
 
-from middleware.auth_models import Base, User
-from middleware.jwt_auth import create_jwt_token, jwt_required, get_current_user_id
+from src.middleware.auth_models import Base, User
+from src.middleware.jwt_auth import create_jwt_token, jwt_required, get_current_user_id
 
 # Setup
 auth_bp = Blueprint('auth', __name__)
