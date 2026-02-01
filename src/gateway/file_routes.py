@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 
 from src.middleware.auth_models import Base, User, File, FileAccessLog
@@ -75,14 +75,20 @@ def upload_file():
             
             # Create file record in database
             new_file = File(
-                file_id=file_id,
+                id=file_id,  # Use UUID directly as id (TEXT)
                 filename=file.filename,
+                original_name=file.filename,
                 file_size=len(file.read()),
+                mime_type=file.content_type or 'unknown',
                 file_type=file.content_type or 'unknown',
                 user_id=user_id,
                 is_public=is_public,
+                primary_node=storage_node,
                 storage_node=storage_node,
-                file_path=f'/{file_id}/{file.filename}'
+                file_path=f'/{file_id}/{file.filename}',
+                checksum='',
+                created_at=datetime.utcnow(),
+                expires_at=datetime.utcnow() + timedelta(days=30)
             )
             file.seek(0)  # Reset file pointer
             

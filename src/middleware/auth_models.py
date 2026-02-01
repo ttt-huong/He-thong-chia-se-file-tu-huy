@@ -24,8 +24,8 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
-    files = relationship('File', back_populates='owner', cascade='all, delete-orphan')
+    # Relationships - explicitly specify foreign key for File to avoid ambiguity
+    files = relationship('File', foreign_keys='File.user_id', back_populates='owner', cascade='all, delete-orphan')
     access_logs = relationship('FileAccessLog', back_populates='user', cascade='all, delete-orphan')
 
     def set_password(self, password: str) -> None:
@@ -55,38 +55,58 @@ class File(Base):
     """File model with permission and ownership tracking"""
     __tablename__ = 'files'
 
-    id = Column(Integer, primary_key=True)
-    file_id = Column(String(255), unique=True, nullable=False, index=True)
+    # Phase 1 compatible: id is TEXT (UUID), not SERIAL
+    id = Column(String(36), primary_key=True)  # UUID format: 8-4-4-4-12
+    # Phase 1 fields
     filename = Column(String(255), nullable=False)
+    original_name = Column(String(255), nullable=True)
     file_size = Column(BigInteger, nullable=False)
-    file_type = Column(String(100), nullable=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    mime_type = Column(String(100), nullable=True)
+    primary_node = Column(String(10), nullable=False, default='node1')
+    replica_nodes = Column(Text, nullable=True, default='')
+    download_limit = Column(Integer, default=3)
+    downloads_left = Column(Integer, default=3)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    expires_at = Column(DateTime, nullable=True)
+    checksum = Column(String(255), nullable=True)
+    is_compressed = Column(Boolean, default=False)
+    has_thumbnail = Column(Boolean, default=False)
+    is_deleted = Column(Boolean, default=False)
+    deleted_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Phase 5 fields
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
     is_public = Column(Boolean, default=False, index=True)
-    storage_node = Column(String(10), nullable=True)
-    file_path = Column(Text, nullable=True)
+    file_type = Column(String(100), nullable=True)
     upload_date = Column(DateTime, default=datetime.utcnow, index=True)
     modified_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     download_count = Column(Integer, default=0)
     deleted = Column(Boolean, default=False)
-    deleted_at = Column(DateTime, nullable=True)
+    storage_node = Column(String(10), nullable=True)
+    file_path = Column(Text, nullable=True)
 
-    # Relationships
-    owner = relationship('User', back_populates='files')
+    # Relationships - explicitly specify foreign keys to avoid ambiguity
+    owner = relationship('User', foreign_keys=[user_id], back_populates='files')
     access_logs = relationship('FileAccessLog', back_populates='file', cascade='all, delete-orphan')
 
     def to_dict(self, include_path: bool = False):
         """Convert to dictionary"""
         data = {
             'id': self.id,
-            'file_id': self.file_id,
             'filename': self.filename,
+            'original_name': self.original_name,
             'file_size': self.file_size,
-            'file_type': self.file_type,
+            'mime_type': self.mime_type,
+            'file_type': self.file_type or self.mime_type,
             'user_id': self.user_id,
             'is_public': self.is_public,
+            'primary_node': self.primary_node,
             'storage_node': self.storage_node,
             'upload_date': self.upload_date.isoformat() if self.upload_date else None,
-            'download_count': self.download_count
+            'download_count': self.download_count,
+            'checksum': self.checksum,
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None
         }
         if include_path:
             data['file_path'] = self.file_path
@@ -102,10 +122,28 @@ class FileAccessLog(Base):
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)
-    file_id = Column(Integer, ForeignKey('files.id', ondelete='CASCADE'), nullable=False, index=True)
+    file_id = Column(String(36), ForeignKey('files.id', ondelete='CASCADE'), nullable=False, index=True)
     action = Column(String(50), nullable=False, index=True)  # 'download', 'view', 'delete', 'share'
     access_date = Column(DateTime, default=datetime.utcnow)
     ip_address = Column(String(45), nullable=True)
+
+    # Relationships
+    user = relationship('User', back_populates='access_logs')
+    file = relationship('File', back_populates='access_logs')
+
+    def to_dict(self):
+        """Convert to dictionary"""
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'file_id': self.file_id,
+            'action': self.action,
+            'access_date': self.access_date.isoformat() if self.access_date else None,
+            'ip_address': self.ip_address
+        }
+
+    def __repr__(self):
+        return f'<FileAccessLog {self.action}>'
 
     # Relationships
     user = relationship('User', back_populates='access_logs')

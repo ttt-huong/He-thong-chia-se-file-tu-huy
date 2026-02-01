@@ -337,8 +337,31 @@ def download_file(file_id: str):
 
 @api_bp.route('/files', methods=['GET'])
 def list_files():
-    """Return recent files with minimal metadata for gallery (masonry)."""
+    """Return recent files with minimal metadata for gallery (masonry).
+    
+    Requires JWT authentication - returns 401 if no valid token provided
+    """
     try:
+        # Check for authorization header and validate token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Unauthorized - missing or invalid token'}), 401
+        
+        # Extract and validate the token
+        token = auth_header.split(' ')[1] if ' ' in auth_header else None
+        if not token:
+            return jsonify({'error': 'Unauthorized - missing token'}), 401
+        
+        # Try to import and validate the token
+        try:
+            from src.middleware.jwt_auth import verify_jwt_token
+            payload = verify_jwt_token(token)
+            if not payload:
+                return jsonify({'error': 'Unauthorized - invalid or expired token'}), 401
+        except Exception as e:
+            logger.error(f"Token validation error: {str(e)}")
+            return jsonify({'error': 'Unauthorized - invalid token'}), 401
+        
         db = current_app.db
         # Get all files from database
         all_files_data = db.get_all_files(limit=50)

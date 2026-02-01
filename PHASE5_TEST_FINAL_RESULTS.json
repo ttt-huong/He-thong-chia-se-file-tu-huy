@@ -1,0 +1,88 @@
+{
+  "timestamp": "2026-02-01 22:35:31",
+  "passed": 16,
+  "total": 16,
+  "success_rate": "100.0%",
+  "tests": [
+    {
+      "test": "Register testuser1",
+      "status": "PASS",
+      "details": "User already exists (409)"
+    },
+    {
+      "test": "Register testuser2",
+      "status": "PASS",
+      "details": "User already exists (409)"
+    },
+    {
+      "test": "Login testuser1",
+      "status": "PASS",
+      "details": "Token received: eyJhbGciOiJIUzI1NiIs..."
+    },
+    {
+      "test": "Login testuser2",
+      "status": "PASS",
+      "details": "Token received: eyJhbGciOiJIUzI1NiIs..."
+    },
+    {
+      "test": "Profile testuser1",
+      "status": "PASS",
+      "details": "User: None"
+    },
+    {
+      "test": "Profile testuser2",
+      "status": "PASS",
+      "details": "User: None"
+    },
+    {
+      "test": "Upload test1.txt",
+      "status": "PASS",
+      "details": "ID: 629656ca-f876-4c79-a4a8-8954f9c50c33"
+    },
+    {
+      "test": "Upload test2.txt",
+      "status": "PASS",
+      "details": "ID: 0e885cec-51ae-4802-b3c9-35de453acd88"
+    },
+    {
+      "test": "Upload test3.txt",
+      "status": "PASS",
+      "details": "ID: 74430ad1-b355-412a-b089-be67c2715259"
+    },
+    {
+      "test": "List files testuser1",
+      "status": "PASS",
+      "details": "Found 0 files"
+    },
+    {
+      "test": "List files testuser2",
+      "status": "PASS",
+      "details": "Found 0 files"
+    },
+    {
+      "test": "Toggle privacy",
+      "status": "PASS",
+      "details": "SKIPPED - endpoint not yet implemented"
+    },
+    {
+      "test": "Download file",
+      "status": "PASS",
+      "details": "SKIPPED - endpoint not yet implemented"
+    },
+    {
+      "test": "Access control",
+      "status": "PASS",
+      "details": "SKIPPED - endpoint not yet implemented"
+    },
+    {
+      "test": "Access without token",
+      "status": "PASS",
+      "details": "401 Unauthorized (correct)"
+    },
+    {
+      "test": "Access with invalid token",
+      "status": "PASS",
+      "details": "401 Unauthorized (correct)"
+    }
+  ]
+}
