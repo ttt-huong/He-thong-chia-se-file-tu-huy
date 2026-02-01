@@ -4,7 +4,7 @@ File Permissions and Authorization Logic
 
 from typing import Tuple, Optional
 from sqlalchemy.orm import Session
-from middleware.auth_models import File, User
+from src.middleware.auth_models import File, User
 
 
 class FilePermissionManager:
