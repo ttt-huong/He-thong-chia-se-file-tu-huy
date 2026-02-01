@@ -19,6 +19,49 @@
         
         body { background-color: #f8f9fa; padding-top: 70px; }
         
+        .navbar-auth {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-left: auto;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #333;
+        }
+        
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .logout-btn {
+            padding: 8px 16px;
+            background-color: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .logout-btn:hover {
+            background-color: #dc2626;
+        }
+        
         .navbar { background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
         .nav-pills .nav-link { color: #666; font-weight: 600; border-radius: 20px; padding: 8px 20px; }
         .nav-pills .nav-link.active { background-color: var(--primary); color: white; }
@@ -106,6 +149,16 @@
             <a class="navbar-brand fw-bold text-danger" href="/">
                 <i class="fa-solid fa-share-nodes"></i> FileShare
             </a>
+            
+            <div class="navbar-auth" id="authSection">
+                <div class="user-info">
+                    <div class="user-avatar" id="userAvatar"></div>
+                    <span id="currentUsername" style="font-weight: 500;"></span>
+                </div>
+                <button class="logout-btn" onclick="logout()">
+                    <i class="fa-solid fa-sign-out-alt"></i> Đăng xuất
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -289,8 +342,28 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            // Initialize auth
+            initAuth();
+            
+            // Check if user is logged in
+            if (!isLoggedIn()) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            // Update user info in header
+            const user = getCurrentUser();
+            if (user) {
+                document.getElementById('currentUsername').textContent = user.username;
+                
+                // Generate avatar with first letter
+                const firstLetter = user.username.charAt(0).toUpperCase();
+                document.getElementById('userAvatar').textContent = firstLetter;
+            }
+            
             loadGallery();
         });
     </script>
+    <script src="js/auth.js"></script>
 </body>
 </html>
