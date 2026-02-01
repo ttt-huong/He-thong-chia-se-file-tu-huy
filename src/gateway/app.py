@@ -147,7 +147,12 @@ def create_app():
     
     # Register blueprints
     from src.gateway.routes import api_bp
+    from src.gateway.auth_routes import auth_bp
+    from src.gateway.file_routes import file_bp
+    
     app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(file_bp)
     
     # Health check endpoint (no prefix)
     @app.route('/health', methods=['GET'])
