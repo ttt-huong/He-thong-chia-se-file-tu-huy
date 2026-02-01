@@ -23,6 +23,9 @@ from src.config.settings import (
 )
 from src.middleware.models import get_db, get_session
 from src.middleware.redis_client import get_redis_client
+from src.middleware.redis_sentinel_client import RedisSentinelClient
+from src.middleware.cache_manager import CacheManager
+from src.middleware.distributed_lock_manager import DistributedLockManager
 from src.gateway.storage_client import StorageNodeManager
 from src.gateway.replication_manager import ReplicationManager
 
@@ -73,6 +76,38 @@ def create_app():
     except Exception as e:
         logger.error(f"Failed to initialize Redis: {e}")
         raise
+    
+    # Initialize Redis Sentinel client for HA (Phase 3)
+    try:
+        sentinel_client = RedisSentinelClient()
+        app.sentinel_client = sentinel_client
+        logger.info("✅ Redis Sentinel client initialized for Phase 3: High Availability")
+        
+        # Get Sentinel cluster info
+        sentinel_info = sentinel_client.get_sentinel_info()
+        if sentinel_info:
+            logger.info(f"Sentinel cluster info: {sentinel_info}")
+    except Exception as e:
+        logger.warning(f"Redis Sentinel not available, using direct connection: {e}")
+        # Continue without Sentinel - direct connection will be used
+    
+    # Initialize Cache Manager (Phase 3)
+    try:
+        sentinel_client = getattr(app, 'sentinel_client', None) or redis_client
+        cache_manager = CacheManager(sentinel_client if hasattr(sentinel_client, 'client') else None)
+        app.cache_manager = cache_manager
+        logger.info("✅ Cache Manager initialized (Phase 3)")
+    except Exception as e:
+        logger.warning(f"Cache Manager initialization failed: {e}")
+    
+    # Initialize Distributed Lock Manager (Phase 3)
+    try:
+        sentinel_client = getattr(app, 'sentinel_client', None) or redis_client
+        lock_manager = DistributedLockManager(sentinel_client if hasattr(sentinel_client, 'client') else None)
+        app.lock_manager = lock_manager
+        logger.info("✅ Distributed Lock Manager initialized (Phase 3)")
+    except Exception as e:
+        logger.warning(f"Lock Manager initialization failed: {e}")
     
     # Initialize Storage Node Manager
     try:

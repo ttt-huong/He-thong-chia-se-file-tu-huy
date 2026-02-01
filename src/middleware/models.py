@@ -148,15 +148,17 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
+            print(f"[DEBUG] Adding file: id={file_id}, primary_node={primary_node}, filename={filename}")
             cursor.execute("""
                 INSERT INTO files (id, filename, original_name, file_size, mime_type, 
                                   primary_node, expires_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (file_id, filename, original_name, file_size, mime_type, primary_node, expires_at))
             conn.commit()
+            print(f"[DEBUG] File added successfully: {file_id} -> {primary_node}")
             return True
         except Exception as e:
-            print(f"Error adding file: {e}")
+            print(f"[DEBUG] Error adding file: {e}")
             return False
         finally:
             conn.close()

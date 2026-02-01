@@ -15,8 +15,11 @@ services:
       - FLASK_HOST=0.0.0.0
       - FLASK_PORT=5000
       - DATABASE_URL=sqlite:////app/data/fileshare.db
-      - REDIS_HOST=redis
+      - REDIS_HOST=redis-master
       - REDIS_PORT=6379
+      - REDIS_SENTINEL_HOST=redis-sentinel1
+      - REDIS_SENTINEL_PORT=26379
+      - REDIS_SENTINEL_MASTER=fileshare-master
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
       - NODE1_URL=http://storage-node1:8000
@@ -30,7 +33,9 @@ services:
       - storage-node2
       - storage-node3
       - rabbitmq
-      - redis
+      - redis-master
+      - redis-slave1
+      - redis-slave2
     networks:
       - fileshare-network
     restart: unless-stopped
@@ -104,8 +109,11 @@ services:
       dockerfile: Dockerfile.worker
     environment:
       - DATABASE_URL=sqlite:////app/data/fileshare.db
-      - REDIS_HOST=redis
+      - REDIS_HOST=redis-master
       - REDIS_PORT=6379
+      - REDIS_SENTINEL_HOST=redis-sentinel1
+      - REDIS_SENTINEL_PORT=26379
+      - REDIS_SENTINEL_MASTER=fileshare-master
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
       - NODE1_URL=http://storage-node1:8000
@@ -116,7 +124,9 @@ services:
       - worker-logs:/app/logs
     depends_on:
       - rabbitmq
-      - redis
+      - redis-master
+      - redis-slave1
+      - redis-slave2
       - gateway
     networks:
       - fileshare-network
@@ -143,19 +153,112 @@ services:
     restart: unless-stopped
 
   # ==========================================
-  # Redis - Cache & Distributed Lock
+  # PHASE 3: Redis Master-Slave Cluster with Sentinel
   # ==========================================
-  redis:
+
+  # Redis Master
+  redis-master:
     image: redis:7-alpine
-    container_name: fileshare-redis
+    container_name: redis-master
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - redis-master-data:/data
     networks:
       - fileshare-network
     restart: unless-stopped
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis Slave 1
+  redis-slave1:
+    image: redis:7-alpine
+    container_name: redis-slave1
+    ports:
+      - "6380:6380"
+    volumes:
+      - redis-slave1-data:/data
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+    command: redis-server --port 6380 --slaveof redis-master 6379 --appendonly yes
+    depends_on:
+      - redis-master
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6380", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis Slave 2
+  redis-slave2:
+    image: redis:7-alpine
+    container_name: redis-slave2
+    ports:
+      - "6381:6381"
+    volumes:
+      - redis-slave2-data:/data
+    networks:
+      - fileshare-network
+    restart: unless-stopped
+    command: redis-server --port 6381 --slaveof redis-master 6379 --appendonly yes
+    depends_on:
+      - redis-master
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6381", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis Sentinel 1 - TODO: Configure with proper startup script
+  # redis-sentinel1:
+  #   image: redis:7-alpine
+  #   container_name: redis-sentinel1
+  #   ports:
+  #     - "26379:26379"
+  #   volumes:
+  #     - redis-sentinel1-data:/data
+  #   networks:
+  #     - fileshare-network
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - redis-master
+  #     - redis-slave1
+  #     - redis-slave2
+
+  # redis-sentinel2:
+  #   image: redis:7-alpine
+  #   container_name: redis-sentinel2
+  #   ports:
+  #     - "26380:26380"
+  #   volumes:
+  #     - redis-sentinel2-data:/data
+  #   networks:
+  #     - fileshare-network
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - redis-master
+  #     - redis-slave1
+  #     - redis-slave2
+
+  # redis-sentinel3:
+  #   image: redis:7-alpine
+  #   container_name: redis-sentinel3
+  #   ports:
+  #     - "26381:26381"
+  #   volumes:
+  #     - redis-sentinel3-data:/data
+  #   networks:
+  #     - fileshare-network
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - redis-master
+  #     - redis-slave1
+  #     - redis-slave2
 
 # ==========================================
 # Docker Volumes - Persistent storage
@@ -168,7 +271,9 @@ volumes:
   node3-data:
   worker-logs:
   rabbitmq-data:
-  redis-data:
+  redis-master-data:
+  redis-slave1-data:
+  redis-slave2-data:
 
 # ==========================================
 # Docker Network - Internal communication

@@ -9,6 +9,7 @@ Chương 8: Load Balancing & Multi-Node Storage
 import os
 import mimetypes
 import logging
+import random
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
@@ -71,9 +72,20 @@ def select_storage_node(storage_manager, file_size: int) -> str:
             logger.warning("No stats available for online nodes, defaulting to node1")
             return 'node1'
 
-        # Select node with most free space
-        selected_id = max(node_stats.items(), key=lambda x: x[1]['free_space'])[0]
-        logger.info(f"Selected {selected_id} (free: {node_stats[selected_id]['free_space'] // (1024*1024)} MB, files: {node_stats[selected_id]['file_count']})")
+        # Debug: log node_stats chi tiết
+        logger.info(f"Node stats for selection: {node_stats}")
+        # Nếu tất cả node đều có free_space bằng nhau, chọn node có ít file_count nhất
+        free_spaces = [v['free_space'] for v in node_stats.values()]
+        if len(set(free_spaces)) == 1:
+            # All free_space equal - select by file_count with randomization for ties
+            min_file_count = min(v['file_count'] for v in node_stats.values())
+            candidates = [nid for nid, stats in node_stats.items() if stats['file_count'] == min_file_count]
+            selected_id = random.choice(candidates)  # Random tie-break
+            logger.info(f"Selected {selected_id} (tie-break by random among candidates with {min_file_count} files)")
+        else:
+            # Chọn node có nhiều free_space nhất
+            selected_id = max(node_stats.items(), key=lambda x: x[1]['free_space'])[0]
+            logger.info(f"Selected {selected_id} (free: {node_stats[selected_id]['free_space'] // (1024*1024)} MB, files: {node_stats[selected_id]['file_count']})")
         return selected_id
     except Exception as e:
         logger.error(f"Error selecting node: {e}, defaulting to node1")
@@ -194,7 +206,7 @@ def upload_file():
         db = current_app.db
         expires_at = (datetime.utcnow() + timedelta(seconds=FILE_TTL_SECONDS)).isoformat()
         
-        db.add_file(
+        db_result = db.add_file(
             file_id=file_id,
             filename=stored_filename,
             original_name=original_filename,
@@ -203,6 +215,12 @@ def upload_file():
             primary_node=selected_node,
             expires_at=expires_at
         )
+        
+        if not db_result:
+            logger.error(f"Failed to save file metadata to database for {file_id}")
+            return jsonify({'error': 'Failed to save file metadata to database'}), 500
+        
+        logger.info(f"File metadata saved to database: {file_id}")
         
         # Replication (Phase 2)
         replication_manager = getattr(current_app, 'replication_manager', None)
@@ -571,3 +589,130 @@ def get_tasks():
     except Exception as e:
         logger.error(f"Get tasks error: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
+
+
+# ============ PHASE 3: Redis Cluster Health Monitoring ============
+
+@api_bp.route('/redis/health', methods=['GET'])
+def redis_health():
+    """Get Redis and Sentinel cluster health status"""
+    try:
+        import redis
+        
+        sentinel_client = getattr(current_app, 'sentinel_client', None)
+        
+        if not sentinel_client:
+            return jsonify({'error': 'Redis not initialized'}), 500
+        
+        # Get the actual Redis client (sentinel_client.client is redis.Redis instance)
+        redis_conn = sentinel_client.client
+        redis_info = redis_conn.info()
+        
+        # Build cluster topology
+        master_info = {'host': 'redis-master', 'port': 6379}
+        slaves_info = [
+            {'host': 'redis-slave1', 'port': 6380},
+            {'host': 'redis-slave2', 'port': 6381}
+        ]
+        
+        # Try to detect slave info from Redis servers
+        try:
+            # Check if we can connect to slaves
+            for i, slave_port in enumerate([6380, 6381]):
+                try:
+                    slave_conn = redis.Redis(
+                        host='localhost',
+                        port=slave_port,
+                        decode_responses=True,
+                        socket_connect_timeout=2
+                    )
+                    slave_info = slave_conn.info()
+                    if slave_info.get('role') == 'slave':
+                        slaves_info[i]['status'] = 'online'
+                        slaves_info[i]['lag'] = slave_info.get('slave_repl_offset', 0)
+                except:
+                    slaves_info[i]['status'] = 'offline'
+        except:
+            pass
+        
+        response = {
+            'status': 'healthy',
+            'redis_cluster': {
+                'master': master_info,
+                'slaves': slaves_info,
+                'master_name': 'fileshare-master'
+            },
+            'redis_stats': {
+                'used_memory': redis_info.get('used_memory_human', 'N/A'),
+                'used_memory_peak': redis_info.get('used_memory_peak_human', 'N/A'),
+                'connected_clients': redis_info.get('connected_clients', 0),
+                'role': redis_info.get('role', 'unknown'),
+                'replication_offset': redis_info.get('replication_offset', 0)
+            }
+        }
+        
+        logger.info(f"Redis health response: {response}")
+        return jsonify(response), 200
+    except Exception as e:
+        logger.error(f"Redis health check error: {e}")
+        return jsonify({'error': str(e), 'status': 'error'}), 500
+
+
+@api_bp.route('/redis/stats', methods=['GET'])
+def redis_stats():
+    """Get Redis cache statistics"""
+    try:
+        cache_manager = getattr(current_app, 'cache_manager', None)
+        if not cache_manager:
+            return jsonify({'error': 'Cache manager not initialized'}), 500
+        
+        cache_info = cache_manager.get_cache_info()
+        
+        return jsonify({
+            'cache': cache_info,
+            'cache_stats': {
+                'hit_rate': f"{cache_info.get('keyspace_hits', 0) / max(cache_info.get('keyspace_hits', 0) + cache_info.get('keyspace_misses', 1), 1) * 100:.2f}%",
+                'total_accesses': cache_info.get('keyspace_hits', 0) + cache_info.get('keyspace_misses', 0)
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Redis stats error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/redis/sentinel/status', methods=['GET'])
+def redis_sentinel_status():
+    """Get detailed Sentinel cluster status"""
+    try:
+        sentinel_client = getattr(current_app, 'sentinel_client', None)
+        if not sentinel_client:
+            return jsonify({'error': 'Sentinel client not initialized'}), 500
+        
+        sentinel_info = sentinel_client.get_sentinel_info()
+        
+        return jsonify({
+            'sentinel_status': 'operational',
+            'master_name': sentinel_info.get('master_name'),
+            'master': sentinel_info.get('master'),
+            'slaves': sentinel_info.get('slaves', []),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Sentinel status error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/locks/info/<resource_type>/<resource_id>', methods=['GET'])
+def lock_info(resource_type: str, resource_id: str):
+    """Get information about a distributed lock"""
+    try:
+        lock_manager = getattr(current_app, 'lock_manager', None)
+        if not lock_manager:
+            return jsonify({'error': 'Lock manager not initialized'}), 500
+        
+        lock_info = lock_manager.get_lock_info(resource_type, resource_id)
+        
+        return jsonify(lock_info), 200
+    except Exception as e:
+        logger.error(f"Lock info error: {e}")
+        return jsonify({'error': str(e)}), 500
