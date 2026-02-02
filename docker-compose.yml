@@ -1,60 +1,28 @@
 services:
   # ==========================================
-  # PHASE 4.2: PgBouncer - Connection Pooling
+  # PostgreSQL - Single Node Database (DEMO MODE)
   # ==========================================
-  pgbouncer:
-    build:
-      context: .
-      dockerfile: Dockerfile.pgbouncer
-    container_name: fileshare-pgbouncer
+  postgres:
+    image: postgres:15-alpine
+    container_name: fileshare-postgres
     ports:
-      - "6432:6432"
-      - "6431:6431"
+      - "5432:5432"
     environment:
-      - PGBOUNCER_DATABASES=fileshare
-      - PGBOUNCER_POOL_MODE=transaction
-      - PGBOUNCER_MAX_CLIENT_CONN=1000
-      - PGBOUNCER_DEFAULT_POOL_SIZE=25
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_secure_pass
+      - POSTGRES_DB=fileshare
     volumes:
-      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
-      - ./pgbouncer_userlist.txt:/etc/pgbouncer/userlist.txt:ro
-      - pgbouncer-logs:/var/log/pgbouncer
-    depends_on:
-      - postgres-master
-      - postgres-standby1
-      - postgres-standby2
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/01_init_schema.sql:/docker-entrypoint-initdb.d/01_init_schema.sql:ro
+      - ./scripts/02_init_auth_fixed.sql:/docker-entrypoint-initdb.d/02_init_auth.sql:ro
+    networks:
+      - fileshare-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6431/stats"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fileshare"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - fileshare-network
-    restart: unless-stopped
-
-  # ==========================================
-  # PHASE 4.1: etcd - Consensus store cho Patroni
-  # ==========================================
-  etcd:
-    image: quay.io/coreos/etcd:v3.5
-    container_name: fileshare-etcd
-    ports:
-      - "2379:2379"
-      - "2380:2380"
-    environment:
-      - ETCD_NAME=etcd-node1
-      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
-      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
-      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
-      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd:2380
-      - ETCD_INITIAL_CLUSTER=etcd-node1=http://etcd:2380
-      - ETCD_INITIAL_CLUSTER_STATE=new
-      - ETCD_INITIAL_CLUSTER_TOKEN=etcd-cluster
-    volumes:
-      - etcd-data:/etcd-data
-    networks:
-      - fileshare-network
-    restart: unless-stopped
 
   # ==========================================
   # Gateway API - Entry point cho client
@@ -69,14 +37,9 @@ services:
     environment:
       - FLASK_HOST=0.0.0.0
       - FLASK_PORT=5000
-      - DATABASE_URL=postgresql://postgres:postgres_secure_pass@postgres-master:5432/fileshare
-      - DATABASE_READ_URL=postgresql://postgres:postgres_secure_pass@postgres-standby1:5432/fileshare
-      - DATABASE_POOL_URL=postgresql://postgres:postgres_secure_pass@pgbouncer:6432/fileshare
+      - DATABASE_URL=postgresql://postgres:postgres_secure_pass@postgres:5432/fileshare
       - REDIS_HOST=redis-master
       - REDIS_PORT=6379
-      - REDIS_SENTINEL_HOST=redis-sentinel1
-      - REDIS_SENTINEL_PORT=26379
-      - REDIS_SENTINEL_MASTER=fileshare-master
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
       - NODE1_URL=http://storage-node1:8000
@@ -86,18 +49,18 @@ services:
       - gateway-data:/app/data
       - gateway-logs:/app/logs
     depends_on:
-      - storage-node1
-      - storage-node2
-      - storage-node3
-      - rabbitmq
-      - etcd
-      - pgbouncer
-      - postgres-master
-      - postgres-standby1
-      - postgres-standby2
-      - redis-master
-      - redis-slave1
-      - redis-slave2
+      postgres:
+        condition: service_healthy
+      storage-node1:
+        condition: service_started
+      storage-node2:
+        condition: service_started
+      storage-node3:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      redis-master:
+        condition: service_healthy
     networks:
       - fileshare-network
     restart: unless-stopped
@@ -170,14 +133,9 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres_secure_pass@postgres-master:5432/fileshare
-      - DATABASE_READ_URL=postgresql://postgres:postgres_secure_pass@postgres-standby1:5432/fileshare
-      - DATABASE_POOL_URL=postgresql://postgres:postgres_secure_pass@pgbouncer:6432/fileshare
+      - DATABASE_URL=postgresql://postgres:postgres_secure_pass@postgres:5432/fileshare
       - REDIS_HOST=redis-master
       - REDIS_PORT=6379
-      - REDIS_SENTINEL_HOST=redis-sentinel1
-      - REDIS_SENTINEL_PORT=26379
-      - REDIS_SENTINEL_MASTER=fileshare-master
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
       - NODE1_URL=http://storage-node1:8000
@@ -186,15 +144,14 @@ services:
     volumes:
       - worker-logs:/app/logs
     depends_on:
-      - rabbitmq
-      - pgbouncer
-      - postgres-master
-      - postgres-standby1
-      - postgres-standby2
-      - redis-master
-      - redis-slave1
-      - redis-slave2
-      - gateway
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      redis-master:
+        condition: service_healthy
+      gateway:
+        condition: service_started
     networks:
       - fileshare-network
     restart: unless-stopped
@@ -220,125 +177,8 @@ services:
     restart: unless-stopped
 
   # ==========================================
-  # PHASE 4: PostgreSQL Master-Slave Replication
+  # Redis Master - Cache & Session
   # ==========================================
-
-  # PostgreSQL Master with Patroni
-  postgres-master:
-    image: patroni:2.1-pg15
-    container_name: postgres-master
-    ports:
-      - "5432:5432"
-      - "8008:8008"
-    environment:
-      - PATRONI_SCOPE=fileshare-cluster
-      - PATRONI_ETCD3_HOSTS=etcd:2379
-      - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data/pgdata
-      - PATRONI_POSTGRESQL_AUTHENTICATION_USERNAME=postgres
-      - PATRONI_POSTGRESQL_AUTHENTICATION_PASSWORD=postgres_secure_pass
-      - PATRONI_POSTGRESQL_PARAMETERS_MAX_CONNECTIONS=200
-      - PATRONI_POSTGRESQL_PARAMETERS_MAX_WAL_SENDERS=10
-      - PATRONI_POSTGRESQL_PARAMETERS_WAL_KEEP_SIZE=1GB
-      - PATRONI_POSTGRESQL_PARAMETERS_SHARED_BUFFERS=256MB
-      - PATRONI_SUPERUSER_USERNAME=postgres
-      - PATRONI_SUPERUSER_PASSWORD=postgres_secure_pass
-      - PATRONI_REPLICATION_USERNAME=replicator
-      - PATRONI_REPLICATION_PASSWORD=replicator_pass_secure
-      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
-      - PATRONI_RESTAPI_CONNECT_ADDRESS=postgres-master:8008
-    volumes:
-      - postgres-master-data:/var/lib/postgresql/data
-      - ./postgres_config/patroni-master.yml:/etc/patroni/patroni.yml:ro
-    depends_on:
-      - etcd
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - fileshare-network
-    restart: unless-stopped
-
-  # PostgreSQL Standby 1 with Patroni
-  postgres-standby1:
-    image: patroni:2.1-pg15
-    container_name: postgres-standby1
-    ports:
-      - "5433:5432"
-      - "8009:8008"
-    environment:
-      - PATRONI_SCOPE=fileshare-cluster
-      - PATRONI_ETCD3_HOSTS=etcd:2379
-      - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data/pgdata
-      - PATRONI_POSTGRESQL_AUTHENTICATION_USERNAME=postgres
-      - PATRONI_POSTGRESQL_AUTHENTICATION_PASSWORD=postgres_secure_pass
-      - PATRONI_POSTGRESQL_PARAMETERS_MAX_CONNECTIONS=200
-      - PATRONI_POSTGRESQL_PARAMETERS_HOT_STANDBY=on
-      - PATRONI_POSTGRESQL_PARAMETERS_HOT_STANDBY_FEEDBACK=on
-      - PATRONI_SUPERUSER_USERNAME=postgres
-      - PATRONI_SUPERUSER_PASSWORD=postgres_secure_pass
-      - PATRONI_REPLICATION_USERNAME=replicator
-      - PATRONI_REPLICATION_PASSWORD=replicator_pass_secure
-      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
-      - PATRONI_RESTAPI_CONNECT_ADDRESS=postgres-standby1:8008
-    volumes:
-      - postgres-standby1-data:/var/lib/postgresql/data
-      - ./postgres_config/patroni-standby.yml:/etc/patroni/patroni.yml:ro
-    depends_on:
-      - etcd
-      - postgres-master
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - fileshare-network
-    restart: unless-stopped
-
-  # PostgreSQL Standby 2 with Patroni
-  postgres-standby2:
-    image: patroni:2.1-pg15
-    container_name: postgres-standby2
-    ports:
-      - "5434:5432"
-      - "8010:8008"
-    environment:
-      - PATRONI_SCOPE=fileshare-cluster
-      - PATRONI_ETCD3_HOSTS=etcd:2379
-      - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data/pgdata
-      - PATRONI_POSTGRESQL_AUTHENTICATION_USERNAME=postgres
-      - PATRONI_POSTGRESQL_AUTHENTICATION_PASSWORD=postgres_secure_pass
-      - PATRONI_POSTGRESQL_PARAMETERS_MAX_CONNECTIONS=200
-      - PATRONI_POSTGRESQL_PARAMETERS_HOT_STANDBY=on
-      - PATRONI_POSTGRESQL_PARAMETERS_HOT_STANDBY_FEEDBACK=on
-      - PATRONI_SUPERUSER_USERNAME=postgres
-      - PATRONI_SUPERUSER_PASSWORD=postgres_secure_pass
-      - PATRONI_REPLICATION_USERNAME=replicator
-      - PATRONI_REPLICATION_PASSWORD=replicator_pass_secure
-      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
-      - PATRONI_RESTAPI_CONNECT_ADDRESS=postgres-standby2:8008
-    volumes:
-      - postgres-standby2-data:/var/lib/postgresql/data
-      - ./postgres_config/patroni-standby.yml:/etc/patroni/patroni.yml:ro
-    depends_on:
-      - etcd
-      - postgres-master
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - fileshare-network
-    restart: unless-stopped
-
-  # ==========================================
-  # PHASE 3: Redis Master-Slave Cluster with Sentinel
-  # ==========================================
-
-  # Redis Master
   redis-master:
     image: redis:7-alpine
     container_name: redis-master
@@ -356,7 +196,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # Redis Slave 1
+  # Redis Slave 1 (optional - for read scaling)
   redis-slave1:
     image: redis:7-alpine
     container_name: redis-slave1
@@ -376,7 +216,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # Redis Slave 2
+  # Redis Slave 2 (optional - for read scaling)
   redis-slave2:
     image: redis:7-alpine
     container_name: redis-slave2
@@ -396,52 +236,6 @@ services:
       timeout: 3s
       retries: 5
 
-  # Redis Sentinel 1 - TODO: Configure with proper startup script
-  # redis-sentinel1:
-  #   image: redis:7-alpine
-  #   container_name: redis-sentinel1
-  #   ports:
-  #     - "26379:26379"
-  #   volumes:
-  #     - redis-sentinel1-data:/data
-  #   networks:
-  #     - fileshare-network
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - redis-master
-  #     - redis-slave1
-  #     - redis-slave2
-
-  # redis-sentinel2:
-  #   image: redis:7-alpine
-  #   container_name: redis-sentinel2
-  #   ports:
-  #     - "26380:26380"
-  #   volumes:
-  #     - redis-sentinel2-data:/data
-  #   networks:
-  #     - fileshare-network
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - redis-master
-  #     - redis-slave1
-  #     - redis-slave2
-
-  # redis-sentinel3:
-  #   image: redis:7-alpine
-  #   container_name: redis-sentinel3
-  #   ports:
-  #     - "26381:26381"
-  #   volumes:
-  #     - redis-sentinel3-data:/data
-  #   networks:
-  #     - fileshare-network
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - redis-master
-  #     - redis-slave1
-  #     - redis-slave2
-
 # ==========================================
 # Docker Volumes - Persistent storage
 # ==========================================
@@ -453,14 +247,10 @@ volumes:
   node3-data:
   worker-logs:
   rabbitmq-data:
-  etcd-data:
-  pgbouncer-logs:
   redis-master-data:
   redis-slave1-data:
   redis-slave2-data:
-  postgres-master-data:
-  postgres-standby1-data:
-  postgres-standby2-data:
+  postgres-data:
 
 # ==========================================
 # Docker Network - Internal communication
